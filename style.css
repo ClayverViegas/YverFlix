@@ -1,0 +1,606 @@
+/* ==========================================================================
+   Streaming MVP — Fase 1
+   Visual escuro inspirado em plataformas modernas de streaming.
+   Sem dependências externas. Variáveis no :root facilitam tematização.
+   ========================================================================== */
+
+/* ---- Reset enxuto ---------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+img { display: block; max-width: 100%; height: auto; }
+button { font: inherit; }
+a { color: inherit; }
+
+/* ---- Tema (variáveis facilitam migração futura para design system) -- */
+:root {
+  --bg: #0b0d10;
+  --bg-grad-1: #0b0d10;
+  --bg-grad-2: #11151b;
+  --bg-elev: #161b22;
+  --bg-elev-2: #1d242c;
+  --border: #232b34;
+  --fg: #eef1f4;
+  --fg-dim: #93a0ad;
+  --fg-mute: #5f6b78;
+  --accent: #e50914;          /* vermelho streaming clássico */
+  --accent-2: #ff3b46;
+  --gold: #f5c518;
+  --shadow-card: 0 6px 18px rgba(0,0,0,.45), 0 2px 4px rgba(0,0,0,.35);
+  --shadow-card-hover: 0 14px 32px rgba(0,0,0,.55), 0 4px 8px rgba(0,0,0,.45);
+  --skeleton: linear-gradient(90deg, #1a1f25 0%, #232a31 50%, #1a1f25 100%);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --gap: 18px;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(229,9,20,.08), transparent 60%),
+    radial-gradient(900px 500px at 0% 0%, rgba(80,90,200,.06), transparent 55%),
+    linear-gradient(180deg, var(--bg-grad-1), var(--bg-grad-2));
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* ---- Acessibilidade -------------------------------------------------- */
+.skip-link {
+  position: absolute; left: -9999px; top: 0;
+  background: var(--accent); color: #fff; padding: 8px 12px; border-radius: 6px;
+  font-weight: 600;
+}
+.skip-link:focus { left: 8px; top: 8px; z-index: 100; }
+
+:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* ---- Topbar ---------------------------------------------------------- */
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: blur(12px);
+  background: rgba(11,13,16,.72);
+  border-bottom: 1px solid var(--border);
+}
+.topbar__inner {
+  max-width: 1400px; margin: 0 auto;
+  padding: 14px 24px;
+  display: flex; align-items: center; gap: 16px;
+}
+.brand {
+  margin: 0;
+  font-size: 1.15rem; font-weight: 700; letter-spacing: .3px;
+  display: flex; align-items: center; gap: 8px;
+  flex: 0 0 auto;
+}
+.brand__dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent);
+}
+.brand__accent { color: var(--accent); margin-left: 4px; }
+
+/* ==========================================================================
+   FASE 3 — Barra de Busca
+   ========================================================================== */
+
+/*
+   Pílula escura no estilo "comando" — discreta no idle, com glow no foco.
+   max-width evita que a barra fique gigantesca em telas largas.
+*/
+.search {
+  position: relative;
+  flex: 1 1 480px;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.search__icon {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--fg-mute);
+  display: inline-flex; align-items: center; justify-content: center;
+  pointer-events: none;            /* clique no ícone passa para o input */
+}
+.search__input {
+  width: 100%;
+  padding: 10px 38px 10px 40px;    /* espaço para ícone à esquerda + clear à direita */
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg);
+  font-size: .95rem;
+  line-height: 1.2;
+  outline: none;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.search__input::placeholder { color: var(--fg-mute); }
+.search__input:hover { border-color: #2f3845; }
+.search__input:focus {
+  border-color: var(--accent);
+  background: var(--bg-elev-2);
+  box-shadow: 0 0 0 3px rgba(229, 9, 20, .15);
+}
+/* Esconde o "x" nativo de type=search do Chrome/Edge — usamos o nosso. */
+.search__input::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+.search__clear {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: 1.05rem; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+.search__clear:hover {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---- Page / section -------------------------------------------------- */
+.page { max-width: 1400px; margin: 0 auto; padding: 0 24px 64px; }
+
+.section { margin-top: 32px; }
+.section__head { margin-bottom: 16px; }
+.section__title {
+  margin: 0; font-size: 1.4rem; font-weight: 700; letter-spacing: .2px;
+}
+.section__sub {
+  margin: 4px 0 0; color: var(--fg-dim); font-size: .92rem;
+}
+
+/* ---- Grid ------------------------------------------------------------ */
+.grid {
+  display: grid;
+  /* auto-fill + minmax → responsivo sem media queries para colunas */
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--gap);
+}
+
+.grid__msg {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--fg-dim);
+  padding: 48px 16px;
+}
+.grid__msg--error { color: #ff8a8f; }
+.grid__msg-detail { color: var(--fg-mute); font-size: .9rem; margin-top: 6px; }
+
+.grid__retry {
+  margin-top: 14px; padding: 10px 18px;
+  background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+  cursor: pointer; font-weight: 600;
+  transition: background .15s ease, transform .1s ease;
+}
+.grid__retry:hover { background: var(--accent-2); }
+.grid__retry:active { transform: translateY(1px); }
+
+/* ---- Card ------------------------------------------------------------ */
+.card {
+  position: relative;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  box-shadow: var(--shadow-card);
+
+  /*
+    content-visibility: auto faz o browser pular layout/paint de cards
+    fora da viewport. contain-intrinsic-size dá tamanho estimado para
+    o scrollbar não pular ao revelar.
+  */
+  content-visibility: auto;
+  contain-intrinsic-size: 340px;
+}
+.card:hover, .card:focus-visible {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: #2f3845;
+}
+
+.card__poster-wrap {
+  position: relative;
+  aspect-ratio: 2 / 3;        /* reserva espaço → evita CLS */
+  background: var(--bg-elev-2);
+  overflow: hidden;
+}
+.card__poster {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity .25s ease, transform .4s ease;
+}
+.card:hover .card__poster { transform: scale(1.04); }
+.card__poster--loaded { opacity: 1; }
+.card__poster--errored,
+.card__poster--placeholder {
+  opacity: 1;
+  background:
+    repeating-linear-gradient(45deg, #20262d, #20262d 8px, #1a1f25 8px, #1a1f25 16px);
+}
+
+.card__rating {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(0,0,0,.7);
+  color: var(--gold);
+  font-size: .78rem; font-weight: 700;
+  padding: 4px 8px; border-radius: 999px;
+  display: none;                 /* JS exibe quando tem nota */
+  backdrop-filter: blur(6px);
+}
+.card__rating--visible { display: inline-block; }
+.card__rating::before {
+  content: "★ ";
+}
+
+.card__body { padding: 12px 14px 14px; }
+.card__title {
+  margin: 0 0 4px; font-size: .98rem; font-weight: 600;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; line-height: 1.25;
+}
+.card__meta {
+  margin: 0; font-size: .8rem; color: var(--fg-dim);
+}
+
+/* ---- Skeleton -------------------------------------------------------- */
+.card--skeleton {
+  height: 340px;
+  background: var(--skeleton);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s linear infinite;
+  border: 1px solid var(--border);
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ---- Footer ---------------------------------------------------------- */
+.footer {
+  text-align: center;
+  padding: 24px;
+  color: var(--fg-mute);
+  font-size: .85rem;
+  border-top: 1px solid var(--border);
+  margin-top: 24px;
+}
+.footer a { color: var(--fg-dim); }
+.footer a:hover { color: var(--fg); }
+
+/* ==========================================================================
+   FASE 2 — Modal do Player
+   ========================================================================== */
+
+/*
+   .modal é fixo, full-screen, oculto por padrão.
+   POR QUE 'visibility: hidden' + 'opacity: 0' em vez de 'display: none':
+     - permite transicionar fade-in/out (display não é animável).
+     - mantém aria-hidden coerente: visibility: hidden retira do
+       fluxo de foco e dos leitores de tela.
+*/
+.modal {
+  position: fixed; inset: 0;
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity .2s ease, visibility 0s linear .2s;
+}
+.modal--open {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity .2s ease;
+}
+
+/*
+   Backdrop com blur — efeito Netflix-style.
+   POR QUE backdrop-filter: blur(...) atrás do painel:
+     - mantém o catálogo como contexto (não some), mas suficientemente
+       desfocado para o player ser o foco visual.
+*/
+.modal__backdrop {
+  position: absolute; inset: 0;
+  background: rgba(7, 9, 12, .72);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  cursor: pointer;
+}
+
+.modal__panel {
+  position: relative;
+  width: min(1100px, 100%);
+  max-height: calc(100vh - 48px);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.7), 0 8px 16px rgba(0,0,0,.5);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  /* Animação sutil de "subir" ao abrir. */
+  transform: translateY(8px) scale(.98);
+  opacity: 0;
+  transition: transform .25s ease, opacity .2s ease;
+}
+.modal--open .modal__panel {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.modal__header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, rgba(255,255,255,.02), transparent);
+  border-bottom: 1px solid var(--border);
+}
+.modal__title {
+  margin: 0;
+  font-size: 1.05rem; font-weight: 600;
+  /* Trunca nomes longos com elipses */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/*
+   Botão de fechar — sempre visível e grande o suficiente p/ touch (44px alvo).
+*/
+.modal__close {
+  flex: 0 0 auto;
+  width: 40px; height: 40px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--fg);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 1.5rem; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background .15s ease, transform .1s ease, border-color .15s ease;
+}
+.modal__close:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.modal__close:active { transform: scale(.95); }
+
+/*
+   Body do modal: 16:9 do iframe.
+   POR QUE aspect-ratio aqui:
+     - reserva o espaço antes do iframe injetar,
+       evitando jank/CLS no momento da abertura.
+*/
+.modal__body {
+  position: relative;
+  background: #000;
+  /* width-driven 16:9, mas limitado por max-height do panel */
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  max-height: calc(100vh - 48px - 56px); /* desconta padding do modal e header */
+}
+
+.player__iframe {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  border: 0;
+  background: #000;
+}
+
+/* ---- Estados do player (loading / erro) ----------------------------- */
+.player__loading,
+.player__error {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 12px;
+  color: var(--fg-dim);
+  text-align: center;
+  padding: 24px;
+}
+.player__loading p { margin: 0; }
+
+.spinner {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,.12);
+  border-top-color: var(--accent);
+  animation: spinner-rotate .9s linear infinite;
+}
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+
+.player__error-title {
+  margin: 0;
+  font-size: 1.05rem; font-weight: 600;
+  color: #ff8a8f;
+}
+.player__error-detail {
+  margin: 0;
+  font-size: .9rem;
+}
+.player__error-actions {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  justify-content: center;
+  margin-top: 6px;
+}
+.player__error-link {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  text-decoration: none;
+  background: var(--bg-elev-2);
+  transition: background .15s ease, border-color .15s ease;
+}
+.player__error-link:hover {
+  background: #2a323b;
+  border-color: #2f3845;
+}
+
+/* ==========================================================================
+   FASE 4 — Filtros de gênero (chips) + Infinite Scroll
+   ========================================================================== */
+
+/* Barra horizontal abaixo do topbar com os chips de gênero. */
+.filters {
+  border-bottom: 1px solid var(--border);
+  background: rgba(13, 16, 21, .6);
+}
+.filters__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 12px 24px;
+}
+
+/*
+  Lista de chips. Em telas largas, vira flex com wrap.
+  Em telas pequenas, vira scroll horizontal (estilo "stories" do Instagram).
+*/
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Cada chip é um <button> — mais acessível e nativamente focável. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: .85rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  transition: background .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
+  user-select: none;
+}
+.chip:hover {
+  color: var(--fg);
+  border-color: #2f3845;
+  background: var(--bg-elev-2);
+}
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.chip:active { transform: scale(.96); }
+
+/* Estado ativo: vermelho-acento, contraste alto. */
+.chip--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(229, 9, 20, .15);
+}
+.chip--active:hover {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: #fff;
+}
+
+/* Skeleton dos chips enquanto /genre/movie/list carrega. */
+.chip--skeleton {
+  width: 90px;
+  height: 30px;
+  border-color: transparent;
+  background: var(--skeleton);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  pointer-events: none;
+  color: transparent;
+}
+
+/* Spinner inferior para carregamento de páginas adicionais. */
+.grid__loadmore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px 0 16px;
+  color: var(--fg-dim);
+  font-size: .9rem;
+}
+.grid__loadmore[hidden] { display: none; }
+.grid__loadmore .spinner {
+  /* Reutiliza .spinner já definido na Fase 2 (player), reduzindo o tamanho. */
+  width: 22px;
+  height: 22px;
+  border-width: 2px;
+}
+.grid__loadmore-text { margin: 0; }
+
+/* Sentinel: invisível mas dentro do fluxo (não use display:none — observers
+   não disparam em elementos com display:none). */
+.grid__sentinel {
+  height: 1px;
+  width: 100%;
+  pointer-events: none;
+}
+
+/* "Fim do catálogo": indicador opcional quando hasMore === false. */
+.grid__end {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0 8px;
+  color: var(--fg-mute);
+  font-size: .85rem;
+}
+
+/* ---- Acessibilidade: respeita prefers-reduced-motion ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  .card, .card__poster { transition: none; }
+  .card:hover .card__poster { transform: none; }
+  .card--skeleton { animation: none; }
+  .grid__retry { transition: none; }
+  .modal, .modal__panel { transition: none; }
+  .spinner { animation: none; }
+  .chip { transition: none; }
+  .chip--skeleton { animation: none; }
+}
+
+/* ---- Mobile ---------------------------------------------------------- */
+@media (max-width: 720px) {
+  /* topbar quebra em duas linhas: brand em cima, busca embaixo full-width */
+  .topbar__inner { flex-wrap: wrap; }
+  .search { flex-basis: 100%; max-width: none; margin: 0; }
+
+  /* Em mobile, chips viram scroll horizontal (sem wrap). */
+  .filters__inner { padding: 10px 14px; }
+  .chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;        /* Firefox */
+  }
+  .chips::-webkit-scrollbar { display: none; }   /* WebKit */
+}
+@media (max-width: 480px) {
+  .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .page { padding: 0 14px 48px; }
+  .topbar__inner { padding: 12px 14px; gap: 10px; }
+  .section__title { font-size: 1.2rem; }
+
+  .modal { padding: 0; }
+  .modal__panel {
+    border-radius: 0;
+    width: 100%; height: 100%;
+    max-height: 100%;
+  }
+  .modal__body { aspect-ratio: auto; flex: 1; max-height: none; }
+}
