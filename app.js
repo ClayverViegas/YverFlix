@@ -929,9 +929,11 @@
      * @param {Element} $container onde os elementos serão renderizados
      * @param {Function} onPlay   callback (season, episode) ao clicar ep
      */
-    function mount(item, $container, onPlay) {
+    function mount(item, $container, onPlay, opts) {
       // Guarda contra mount duplicado: se já existe, destrói antes.
       destroy();
+
+      opts = opts || {};
 
       // Constrói o DOM (header com select + loading + grid de cards).
       buildContainerDOM($container);
@@ -944,8 +946,13 @@
         $loading:  $container.querySelector('.episodes-section__loading'),
         $list:     $container.querySelector('.episodes-grid'),
         onPlay: onPlay,
-        currentSeason: 1,
-        currentEpisode: null,  // FASE 6 — nenhum episódio começa "playing"
+        // FASE 8 — resume é a temporada/ep que veio do "Continuar Assistindo".
+        // Se setado, a UI auto-seleciona a temporada e (se autoplay) dispara
+        // o player imediatamente após carregar.
+        currentSeason: opts.resumeSeason || 1,
+        currentEpisode: opts.resumeEpisode || null,
+        resumeAutoplay: !!opts.autoplay && !!opts.resumeEpisode,
+        resumeConsumed: false,
       };
       current = c;
 
@@ -956,13 +963,17 @@
       c.$list.addEventListener('click',    onEpisodeClick,  { signal: c.controller.signal });
       c.$list.addEventListener('keydown',  onEpisodeKeydown, { signal: c.controller.signal });
 
-      // Carrega detalhes + temporada 1 em PARALELO (reduz TTI da lista).
+      // Carrega detalhes + temporada inicial em PARALELO (reduz TTI da lista).
       loadInitial(item.tmdbId);
     }
 
     async function loadInitial(tmdbId) {
       var c = current;
       if (!c || c.tmdbId !== tmdbId) return;
+
+      // FASE 8 — temporada inicial pode ser != 1 quando vem do
+      // "Continuar Assistindo" via opts.resumeSeason.
+      var initialSeason = c.currentSeason || 1;
 
       var entry = ensureCacheEntry(tmdbId);
       showLoading();
@@ -983,12 +994,12 @@
           });
         }
 
-        // Cache hit na temporada 1? Skip fetch.
-        if (entry.episodes[1]) {
-          episodesPromise = Promise.resolve(entry.episodes[1]);
+        // Cache hit na temporada inicial? Skip fetch.
+        if (entry.episodes[initialSeason]) {
+          episodesPromise = Promise.resolve(entry.episodes[initialSeason]);
         } else {
-          episodesPromise = getSeasonEpisodes(tmdbId, 1, c.controller.signal).then(function (eps) {
-            entry.episodes[1] = eps;
+          episodesPromise = getSeasonEpisodes(tmdbId, initialSeason, c.controller.signal).then(function (eps) {
+            entry.episodes[initialSeason] = eps;
             return eps;
           });
         }
@@ -1003,6 +1014,15 @@
         renderSeasonOptions(entry.seasons, current.currentSeason);
         renderEpisodes(episodes, current.currentEpisode);
         hideLoading();
+
+        // FASE 8 — autoplay do "Continuar Assistindo": dispara onPlay com
+        // o S/E salvo logo após a primeira lista carregar. resumeConsumed
+        // garante que só dispara 1×, mesmo se o user trocar de temporada
+        // depois e o cache já estiver quente.
+        if (current.resumeAutoplay && !current.resumeConsumed) {
+          current.resumeConsumed = true;
+          activateEpisode(current.currentSeason, current.currentEpisode);
+        }
       } catch (err) {
         if (err && err.name === 'AbortError') return;
         console.error('[Streaming MVP] Falha ao carregar série/temporada:', err);
@@ -1074,8 +1094,20 @@
         it.setAttribute('aria-selected', match ? 'true' : 'false');
       });
 
+      // FASE 8 — resolve título do episódio do cache (pra registrar no histórico).
+      var entry = cache[current.tmdbId];
+      var epTitle = null;
+      if (entry && entry.episodes && entry.episodes[season]) {
+        for (var i = 0; i < entry.episodes[season].length; i++) {
+          if (entry.episodes[season][i].number === episode) {
+            epTitle = entry.episodes[season][i].name;
+            break;
+          }
+        }
+      }
+
       // Notifica o ContentModal (ele cria o iframe + entra na view player).
-      if (typeof current.onPlay === 'function') current.onPlay(season, episode);
+      if (typeof current.onPlay === 'function') current.onPlay(season, episode, epTitle);
     }
 
     /* ---- render ---- */
@@ -1367,8 +1399,10 @@
      * @param {Element} $loadingEl         overlay de loading do modal
      * @param {Function} onPlay            callback (season, episode) — null/null para filme
      */
-    function mount(item, $root, $loadingEl, onPlay) {
+    function mount(item, $root, $loadingEl, onPlay, opts) {
       destroy();
+
+      opts = opts || {};
 
       current = {
         tmdbId: item.tmdbId,
@@ -1378,6 +1412,12 @@
         $loading: $loadingEl,
         $episodesContainer: null,
         onPlay: onPlay,
+        // FASE 8 — opts encaminhados pro SeriesEpisodes (deep linking).
+        resumeOpts: {
+          resumeSeason: opts.resumeSeason,
+          resumeEpisode: opts.resumeEpisode,
+          autoplay: !!opts.autoplay,
+        },
       };
 
       // Cache hit total → render síncrono.
@@ -1456,9 +1496,10 @@
         SeriesEpisodes.mount(
           { tmdbId: details.tmdbId, mediaType: 'tv', title: details.title },
           episodesSection,
-          function (season, episode) {
-            if (typeof c.onPlay === 'function') c.onPlay(season, episode);
-          }
+          function (season, episode, episodeTitle) {
+            if (typeof c.onPlay === 'function') c.onPlay(season, episode, episodeTitle);
+          },
+          c.resumeOpts                  // FASE 8 — deep linking
         );
       }
       // Para movie, o "Assistir agora" já está no hero (botão).
@@ -2320,6 +2361,366 @@
     return { init: init, reload: reload };
   })();
 
+  /* ============================================================
+     FASE 8 — HistoryService (watch_history)
+     ============================================================
+     Toda chamada a `enterPlayerView` no ContentModal dispara um
+     `HistoryService.touch(item, { season, episode, episodeTitle })`.
+     O service grava 1 row por (user, tmdb_id, media_type) via UPSERT.
+
+     Estratégia para evitar chamadas excessivas ao banco:
+
+     1) DEBOUNCE 500ms POR CHAVE (tmdb_id+media_type)
+        - Cada `touch()` reseta um timer. Se o user clicar rapidamente
+          em vários episódios da mesma série, só o ÚLTIMO upsert sai.
+        - Cliques em séries diferentes têm timers independentes —
+          não interferem entre si.
+
+     2) DEDUPE SEMÂNTICO (sigCache)
+        - Cache em memória do (season, episode) do último upsert
+          enviado. Antes do flush, comparo com o payload novo. Se
+          são idênticos, NEM SEQUER bate no banco.
+        - Caso típico: user fecha modal e reabre o mesmo episódio
+          5 segundos depois → dedupe pula o upsert (updated_at
+          ficaria + 5s mais novo, mas a UI não muda).
+
+     3) OPTIMISTIC EVENT
+        - `dispatchEvent('yverflix:history-changed')` é disparado
+          ANTES do upsert resolver. ContinueWatching atualiza a
+          UI instantâneo. Se o upsert falhar, marco no log e libero
+          o sigCache pra que um próximo touch retry naturalmente.
+
+     4) UPSERT NATIVO (vs SELECT-then-INSERT/UPDATE)
+        - Single round-trip por chave. UNIQUE constraint do banco
+          é a garantia última.
+
+     5) LAST-WRITE-WINS via updated_at
+        - Mesmo se uma response chegar fora de ordem, o `updated_at`
+          mais recente ganha no SELECT do boot (order by desc).
+
+     Cenário stress: user abre 10 episódios em 3s.
+       - 10 calls de touch() em <500ms → 1 upsert no banco (debounce).
+       - Próxima sessão fecha o modal, reabre o E10 → 0 upserts (dedupe).
+       - Total: ~1 upsert/banco por "session de zapping", em vez de 10. */
+
+  var HistoryService = (function () {
+    var TABLE = 'watch_history';
+    var DEBOUNCE_MS = 500;
+
+    function getClient() {
+      return (window.YverFlix && window.YverFlix.supabase) || null;
+    }
+    function key(mediaType, tmdbId) { return mediaType + ':' + tmdbId; }
+
+    var pendingTimers   = Object.create(null);   // key -> timer id
+    var pendingPayloads = Object.create(null);   // key -> payload
+    var sigCache        = Object.create(null);   // key -> last (season,episode) sent
+
+    /**
+     * Marca um item como "assistido agora". Debounce 500ms + dedupe.
+     */
+    function touch(item, ctx) {
+      if (!item || item.tmdbId == null || !item.mediaType) return;
+      ctx = ctx || {};
+
+      var k = key(item.mediaType, item.tmdbId);
+      var payload = {
+        user_id: getCurrentUserId(),
+        tmdb_id: item.tmdbId,
+        media_type: item.mediaType,
+        title: item.title || null,
+        poster_path: item.posterPath || null,
+        season:        ctx.season != null  ? ctx.season  : null,
+        episode:       ctx.episode != null ? ctx.episode : null,
+        episode_title: ctx.episodeTitle || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      pendingPayloads[k] = payload;
+
+      // Optimistic UI: ContinueWatching atualiza ANTES do round-trip.
+      window.dispatchEvent(new CustomEvent('yverflix:history-changed', {
+        detail: {
+          action: 'touched',
+          item: {
+            tmdbId: item.tmdbId,
+            mediaType: item.mediaType,
+            title: item.title || null,
+            posterPath: item.posterPath || null,
+            season: payload.season,
+            episode: payload.episode,
+            episodeTitle: payload.episode_title,
+            updatedAt: payload.updated_at,
+          },
+        },
+      }));
+
+      if (pendingTimers[k]) clearTimeout(pendingTimers[k]);
+      pendingTimers[k] = setTimeout(function () {
+        delete pendingTimers[k];
+        var p = pendingPayloads[k];
+        delete pendingPayloads[k];
+        flush(k, p);
+      }, DEBOUNCE_MS);
+    }
+
+    function flush(k, payload) {
+      var supa = getClient();
+      if (!supa || !payload) return;
+
+      // Dedupe semântico: se nada mudou (mesma S/E), skip o upsert.
+      var sig = sigCache[k];
+      if (sig && sig.season === payload.season && sig.episode === payload.episode) {
+        // updated_at ficaria 1-2s mais novo, mas a UI já reflete o estado.
+        // Pular evita pressionar o banco em zapping de UI.
+        return;
+      }
+      sigCache[k] = { season: payload.season, episode: payload.episode };
+
+      supa.from(TABLE)
+        .upsert(payload, { onConflict: 'user_id,tmdb_id,media_type' })
+        .then(function (res) {
+          if (res.error) {
+            // Libera o sigCache pra tentar de novo em um próximo touch.
+            delete sigCache[k];
+            console.warn('[History] upsert erro:', res.error);
+          }
+        });
+    }
+
+    /**
+     * @returns {Promise<Array>} top N rows por updated_at desc.
+     */
+    function list(limit) {
+      var supa = getClient();
+      if (!supa) return Promise.resolve([]);
+      var lim = limit || 10;
+      return supa
+        .from(TABLE)
+        .select('id, user_id, tmdb_id, media_type, title, poster_path, season, episode, episode_title, updated_at')
+        .eq('user_id', getCurrentUserId())
+        .order('updated_at', { ascending: false })
+        .limit(lim)
+        .then(function (res) {
+          if (res.error) {
+            console.warn('[History] list erro:', res.error);
+            return [];
+          }
+          return res.data || [];
+        });
+    }
+
+    /**
+     * Cancela timers + limpa caches. Chamado em logout (user trocou).
+     */
+    function invalidate() {
+      var ts = Object.keys(pendingTimers);
+      for (var i = 0; i < ts.length; i++) {
+        clearTimeout(pendingTimers[ts[i]]);
+        delete pendingTimers[ts[i]];
+      }
+      var ps = Object.keys(pendingPayloads);
+      for (var j = 0; j < ps.length; j++) delete pendingPayloads[ps[j]];
+      var ss = Object.keys(sigCache);
+      for (var k = 0; k < ss.length; k++) delete sigCache[ss[k]];
+    }
+
+    return { touch: touch, list: list, invalidate: invalidate };
+  })();
+  // Expõe pra debugging (igual padrão YverFlix.supabase).
+  window.YverFlix = window.YverFlix || {};
+  window.YverFlix.HistoryService = HistoryService;
+
+  /* ============================================================
+     FASE 8 — ContinueWatching (carrossel "Continuar Assistindo")
+     ============================================================
+     Reusa createCard pra estética idêntica ao grid + Minha Lista.
+     Sync via `yverflix:history-changed` (disparado pelo HistoryService).
+
+     Patches incrementais (zero re-render do site):
+       - Item já existe no rail → move pro topo + atualiza badge S/E.
+       - Item novo → prepend.
+       - Lista cresce além de 10 → trim do mais antigo (last-N consistente). */
+
+  var ContinueWatching = (function () {
+    var $section = document.getElementById('continue-section');
+    var $list = document.getElementById('continue-list');
+
+    var byKey = Object.create(null);    // "<media>:<id>" → article
+    var loadGen = 0;
+
+    function key(mediaType, tmdbId) { return mediaType + ':' + tmdbId; }
+    function show() { if ($section) $section.hidden = false; }
+    function hide() { if ($section) $section.hidden = true; }
+
+    function rowToItem(row) {
+      return {
+        tmdbId: row.tmdb_id,
+        type: row.media_type,
+        title: row.title || 'Sem título',
+        posterPath: row.poster_path || null,
+        posterUrl: row.poster_path
+          ? CONFIG.TMDB_IMG_BASE + '/' + CONFIG.POSTER_SIZE + row.poster_path
+          : null,
+        voteAverage: 0,
+        releaseDate: '',
+      };
+    }
+
+    function badgeText(season, episode) {
+      var ep = episode < 10 ? '0' + episode : String(episode);
+      return 'T' + season + ' · E' + ep;
+    }
+
+    function buildCardElement(row) {
+      var fragment = createCard(rowToItem(row));
+      var article = fragment.querySelector('.card');
+      article.classList.add('continue-card');
+
+      // Deep linking: marca o card pra abrir o modal direto no player.
+      article.dataset.autoplay = '1';
+      if (row.season != null && row.episode != null) {
+        article.dataset.resumeSeason = String(row.season);
+        article.dataset.resumeEpisode = String(row.episode);
+
+        // Badge "T1 · E03" sobreposta no canto inf-esq do poster.
+        var posterWrap = article.querySelector('.card__poster-wrap');
+        if (posterWrap) {
+          var badge = document.createElement('span');
+          badge.className = 'continue-card__badge';
+          badge.textContent = badgeText(row.season, row.episode);
+          posterWrap.appendChild(badge);
+        }
+      }
+
+      var lazy = fragment.querySelectorAll('img[data-src]');
+      return { article: article, fragment: fragment, lazyImgs: lazy };
+    }
+
+    function init() {
+      window.addEventListener('yverflix:history-changed', onChanged);
+      fetchAndRender();
+    }
+
+    function fetchAndRender() {
+      if (!$section || !$list) return;
+
+      var myGen = ++loadGen;
+      HistoryService.list(10)
+        .then(function (rows) {
+          if (myGen !== loadGen) return;
+          if (!rows.length) {
+            // Race: addUpsert por evento pode ter populado durante o fetch.
+            if (!$list.children.length) hide();
+            return;
+          }
+          var frag = document.createDocumentFragment();
+          var allLazy = [];
+          for (var i = 0; i < rows.length; i++) {
+            var k = key(rows[i].media_type, rows[i].tmdb_id);
+            if (byKey[k]) continue;       // já adicionado por evento
+            var built = buildCardElement(rows[i]);
+            byKey[k] = built.article;
+            frag.appendChild(built.fragment);
+            for (var j = 0; j < built.lazyImgs.length; j++) {
+              allLazy.push(built.lazyImgs[j]);
+            }
+          }
+          $list.appendChild(frag);
+          for (var x = 0; x < allLazy.length; x++) {
+            imageObserver.observe(allLazy[x]);
+          }
+          show();
+        })
+        .catch(function (err) {
+          if (myGen !== loadGen) return;
+          console.warn('[ContinueWatching] init falhou:', err);
+          if (!$list.children.length) hide();
+        });
+    }
+
+    function onChanged(e) {
+      var d = e && e.detail;
+      if (!d || !d.item) return;
+      // Aceita 'touched' (only action por enquanto). Futuro: 'cleared'.
+      if (d.action === 'touched') upsertCard(d.item);
+    }
+
+    /**
+     * Patch O(1):
+     *  - Existe → atualiza badge + data-attrs + move pro topo.
+     *  - Não existe → cria + prepend. Trim a max=10 cards.
+     */
+    function upsertCard(item) {
+      if (!$list) return;
+      var k = key(item.mediaType, item.tmdbId);
+      var existing = byKey[k];
+
+      if (existing) {
+        // Atualiza badge e data-attrs.
+        var posterWrap = existing.querySelector('.card__poster-wrap');
+        if (item.season != null && item.episode != null) {
+          existing.dataset.resumeSeason = String(item.season);
+          existing.dataset.resumeEpisode = String(item.episode);
+          var badge = existing.querySelector('.continue-card__badge');
+          if (!badge && posterWrap) {
+            badge = document.createElement('span');
+            badge.className = 'continue-card__badge';
+            posterWrap.appendChild(badge);
+          }
+          if (badge) badge.textContent = badgeText(item.season, item.episode);
+        }
+        // Move pro topo (sem re-render: mesmo node).
+        $list.insertBefore(existing, $list.firstChild);
+        show();
+        return;
+      }
+
+      // Card novo
+      var built = buildCardElement({
+        tmdb_id: item.tmdbId,
+        media_type: item.mediaType,
+        title: item.title,
+        poster_path: item.posterPath,
+        season: item.season,
+        episode: item.episode,
+      });
+      byKey[k] = built.article;
+      $list.insertBefore(built.fragment, $list.firstChild);
+      for (var i = 0; i < built.lazyImgs.length; i++) {
+        imageObserver.observe(built.lazyImgs[i]);
+      }
+
+      // Trim: mantém só os 10 mais recentes (consistente com o list(10)).
+      while ($list.children.length > 10) {
+        var last = $list.lastElementChild;
+        if (!last) break;
+        var lastKey = (last.dataset.mediaType || '') + ':' + (last.dataset.id || '');
+        var imgs = last.querySelectorAll('img');
+        for (var j = 0; j < imgs.length; j++) imageObserver.unobserve(imgs[j]);
+        last.remove();
+        delete byKey[lastKey];
+      }
+      show();
+    }
+
+    /**
+     * Re-fetch quando o user trocou (login/logout). Mesmo padrão do MyList.
+     */
+    function reload() {
+      if (!$section || !$list) return;
+      var imgs = $list.querySelectorAll('img');
+      for (var i = 0; i < imgs.length; i++) imageObserver.unobserve(imgs[i]);
+      $list.replaceChildren();
+      var keys = Object.keys(byKey);
+      for (var k = 0; k < keys.length; k++) delete byKey[keys[k]];
+      hide();
+      fetchAndRender();
+    }
+
+    return { init: init, reload: reload };
+  })();
+
   /* ----------------------- 5. Content Modal (Fase 6) -------------------- */
 
   /**
@@ -2379,6 +2780,31 @@
      */
     // var IFRAME_SANDBOX = 'allow-forms allow-scripts allow-same-origin allow-presentation';
 
+    /**
+     * FASE 8 — Server providers. Cada server tem seu próprio adapter de URL.
+     * Ao adicionar mais servers (Mixdrop, Embedder), só registrar aqui.
+     */
+    var SERVERS = {
+      '1': { id: '1', name: 'Servidor 1', build: buildSuperflixUrl },
+      '2': { id: '2', name: 'Servidor 2', build: buildWarezcdnUrl   },
+    };
+    var SERVER_PREF_KEY = 'yverflix:server:preference';
+
+    /**
+     * Última escolha do user persistida em localStorage. Default: '1'.
+     * Persistir entre sessões evita o user re-trocar toda vez que abre
+     * um conteúdo se o Server 2 funcionar melhor pra rede dele.
+     */
+    function readServerPref() {
+      try {
+        var v = localStorage.getItem(SERVER_PREF_KEY);
+        return SERVERS[v] ? v : '1';
+      } catch (e) { return '1'; }
+    }
+    function writeServerPref(s) {
+      try { localStorage.setItem(SERVER_PREF_KEY, s); } catch (e) { /* private mode */ }
+    }
+
     var state = {
       isOpen: false,
       view: 'details',         // FASE 6 — 'details' | 'player'
@@ -2386,18 +2812,17 @@
       currentItem: null,
       currentSeason: null,
       currentEpisode: null,
+      currentEpisodeTitle: null,    // FASE 8 — pra HistoryService
+      currentServer: readServerPref(),  // FASE 8 — '1' | '2'
       loadTimerId: 0,
       cleanups: null,
       lastFocused: null,
     };
 
     /**
-     * Constrói a URL do iframe conforme o tipo de mídia.
-     * REQUISITO: movie → /filme/{id} ; tv → /serie/{id}.
-     * FASE 5: para séries, anexa ?season=S&episode=E quando ambos
-     * são fornecidos (REQUISITO 5 — player dinâmico).
+     * Server 1 — Superflix. Mesma URL da Fase 5/6 (query params).
      */
-    function buildPlayerUrl(mediaType, tmdbId, season, episode) {
+    function buildSuperflixUrl(mediaType, tmdbId, season, episode) {
       var pathSegment = mediaType === 'movie' ? 'filme' : 'serie';
       var url = SUPERFLIX_BASE + '/' + pathSegment + '/' + encodeURIComponent(tmdbId);
       // Importante: usar `!= null` (e não truthy) para suportar season=0
@@ -2410,20 +2835,57 @@
     }
 
     /**
+     * Server 2 — WarezCDN. Documentação:
+     *   filme: https://embed.warezcdn.com/filme/<TMDB_ID>
+     *   serie: https://embed.warezcdn.com/serie/<TMDB_ID>/<TEMP>/<EP>
+     *
+     * Diferença do Superflix: warezcdn usa PATH segments em vez de query
+     * string pra séries. Sem fallback de S/E (warezcdn precisa dos dois
+     * pra resolver o embed); usamos S1E1 como default seguro.
+     */
+    function buildWarezcdnUrl(mediaType, tmdbId, season, episode) {
+      var id = encodeURIComponent(tmdbId);
+      if (mediaType === 'movie') {
+        return 'https://embed.warezcdn.com/filme/' + id;
+      }
+      var s = season != null ? season : 1;
+      var e = episode != null ? episode : 1;
+      return 'https://embed.warezcdn.com/serie/' + id +
+             '/' + encodeURIComponent(s) +
+             '/' + encodeURIComponent(e);
+    }
+
+    /**
+     * Dispatcher — escolhe o adapter conforme o server atual.
+     * Server desconhecido cai no Server 1 (defesa contra localStorage corrompido).
+     */
+    function buildPlayerUrl(server, mediaType, tmdbId, season, episode) {
+      var s = SERVERS[server] || SERVERS['1'];
+      return s.build(mediaType, tmdbId, season, episode);
+    }
+
+    /**
      * Abre o modal com a view de DETALHES (não inicia o player ainda).
      * Iframe será criado apenas quando o usuário clicar "Assistir Agora"
      * (filme) ou um episódio (série).
      *
      * @param {{ tmdbId: number, mediaType: 'movie'|'tv', title: string }} item
+     * @param {Object} [opts]
+     * @param {boolean} [opts.autoplay]      FASE 8 — pular detalhes e ir direto pro player
+     * @param {number}  [opts.resumeSeason]  FASE 8 — temporada salva (deep link do Continue)
+     * @param {number}  [opts.resumeEpisode] FASE 8 — episódio salvo
+     * @param {string}  [opts.resumeEpisodeTitle] FASE 8 — título do episódio salvo
      */
-    function open(item) {
+    function open(item, opts) {
       if (state.isOpen) close();
+      opts = opts || {};
 
       state.isOpen = true;
       state.view = 'details';
       state.currentItem = item;
       state.currentSeason = null;
       state.currentEpisode = null;
+      state.currentEpisodeTitle = null;
       state.lastFocused = document.activeElement;
 
       state.cleanups = new AbortController();
@@ -2451,16 +2913,31 @@
 
       // 5) FASE 6 — monta DetailsView. onPlay é o callback que entra no
       //    player. Para filmes: (null, null) → cria iframe sem season/ep.
-      //    Para séries: (season, episode) → cria iframe com query params.
-      DetailsView.mount(item, $detailsContent, $detailsLoading, function (season, episode) {
-        enterPlayerView(season, episode);
+      //    Para séries: (season, episode, episodeTitle) → cria iframe.
+      // 5.1) FASE 8 — passa opts.resume* pro DetailsView pra que as séries
+      //      auto-selecionem a temporada/episódio salvos e (se autoplay)
+      //      disparem o player imediatamente após carregar a temporada.
+      DetailsView.mount(item, $detailsContent, $detailsLoading, function (season, episode, episodeTitle) {
+        enterPlayerView(season, episode, episodeTitle);
+      }, {
+        resumeSeason: opts.resumeSeason,
+        resumeEpisode: opts.resumeEpisode,
+        autoplay: !!opts.autoplay,
       });
 
       // 6) FASE 6.2 — liga o botão de favoritos ao item atual. Faz a
       //    consulta de status em PARALELO ao DetailsView (não bloqueia).
       Favorites.attach(item);
 
-      // 7) Foco inicial no botão fechar (acessibilidade).
+      // 7) FASE 8 — autoplay direto pra view player (filme vindo do
+      //    Continuar Assistindo, ou click em card sem necessidade de detalhes).
+      //    Para séries, o autoplay é aplicado pelo DetailsView quando a
+      //    temporada chega (precisa do episode_title pra registrar history).
+      if (opts.autoplay && item.mediaType === 'movie') {
+        enterPlayerView(null, null, null);
+      }
+
+      // 8) Foco inicial no botão fechar (acessibilidade).
       setTimeout(function () {
         var closeBtn = $modal.querySelector('.modal__close');
         if (closeBtn) closeBtn.focus();
@@ -2469,22 +2946,69 @@
 
     /*
      * FASE 6 — Alterna para a view do player e cria o iframe.
-     * @param {number|null} season   null para filmes
-     * @param {number|null} episode  null para filmes
+     * FASE 8 — também grava no watch_history (debounced no HistoryService).
+     *
+     * @param {number|null} season         null para filmes
+     * @param {number|null} episode        null para filmes
+     * @param {string|null} episodeTitle   título do ep ("Pilot"); usado pra UI
+     *                                     do "Continuar Assistindo".
      */
-    function enterPlayerView(season, episode) {
+    function enterPlayerView(season, episode, episodeTitle) {
       if (!state.isOpen || !state.currentItem) return;
 
       state.view = 'player';
       state.currentSeason = season;
       state.currentEpisode = episode;
+      state.currentEpisodeTitle = episodeTitle || null;
 
       applyViewClass('player');
+      // Sincroniza a UI das tabs com a preferência atual (importante quando
+      // o user trocou de server numa sessão e abre outro conteúdo agora).
+      syncServerTabsUI();
       createIframe(state.currentItem, season, episode);
+
+      // FASE 8 — toda entrada no player é um "play" → registra no histórico.
+      // O HistoryService faz dedupe + debounce internamente, então chamar
+      // a cada enterPlayerView é seguro.
+      if (typeof HistoryService !== 'undefined' && HistoryService.touch) {
+        HistoryService.touch(state.currentItem, {
+          season: season,
+          episode: episode,
+          episodeTitle: episodeTitle || null,
+        });
+      }
 
       // Foco no botão Voltar (acessibilidade — user pode pressionar Enter
       // pra voltar ou Esc pra fechar).
       setTimeout(function () { try { $back.focus(); } catch (e) {} }, 0);
+    }
+
+    /**
+     * FASE 8 — Troca o servidor mantendo o S/E atual.
+     *
+     * Re-cria o iframe com a nova URL. Não dispara HistoryService (não é
+     * uma "nova vez assistindo", apenas troca de fonte do mesmo episódio).
+     */
+    function setServer(nextServer) {
+      if (!SERVERS[nextServer] || nextServer === state.currentServer) return;
+      state.currentServer = nextServer;
+      writeServerPref(nextServer);
+      syncServerTabsUI();
+
+      // Se já estamos no player view, recria o iframe imediatamente.
+      // Caso contrário, a próxima entrada usará o novo server.
+      if (state.view === 'player' && state.currentItem) {
+        createIframe(state.currentItem, state.currentSeason, state.currentEpisode);
+      }
+    }
+
+    function syncServerTabsUI() {
+      var tabs = $playerView.querySelectorAll('.player__server');
+      Array.prototype.forEach.call(tabs, function (t) {
+        var active = t.dataset.server === state.currentServer;
+        t.classList.toggle('player__server--active', active);
+        t.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
     }
 
     /*
@@ -2547,7 +3071,7 @@
         onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
       }, IFRAME_LOAD_TIMEOUT_MS);
 
-      iframe.src = buildPlayerUrl(item.mediaType, item.tmdbId, season, episode);
+      iframe.src = buildPlayerUrl(state.currentServer, item.mediaType, item.tmdbId, season, episode);
       state.iframe = iframe;
       $mount.appendChild(iframe);
     }
@@ -2700,6 +3224,7 @@
       link.rel = 'noopener noreferrer';
       if (state.currentItem) {
         link.href = buildPlayerUrl(
+          state.currentServer,
           state.currentItem.mediaType,
           state.currentItem.tmdbId,
           state.currentSeason,
@@ -2715,6 +3240,20 @@
       box.appendChild(actions);
       $mount.appendChild(box);
     }
+
+    /**
+     * FASE 8 — Server tabs delegation. Listener no $playerView (e não em
+     * cada botão) sobrevive a re-renders e funciona via Enter/Space porque
+     * <button> tem comportamento de click nativo no Enter.
+     *
+     * Listener registrado UMA vez no boot do IIFE — não é por modal-open,
+     * então não passa pelo AbortController do open().
+     */
+    $playerView.addEventListener('click', function (e) {
+      var btn = e.target.closest('.player__server');
+      if (!btn || !$playerView.contains(btn)) return;
+      setServer(btn.dataset.server);
+    });
 
     // API pública do módulo.
     return { open: open, close: close };
@@ -2937,6 +3476,21 @@
     var card = event.target.closest('.card');
     if (!card || !card.dataset.id) return;       // ignora skeletons/msgs
     var titleEl = card.querySelector('.card__title');
+
+    // FASE 8 — deep linking: cards de "Continuar Assistindo" carregam
+    // data-autoplay (e data-resume-* pra séries). ContentModal.open lê
+    // esses opts e pula direto pro player view, com S/E correto.
+    var opts = null;
+    if (card.dataset.autoplay === '1') {
+      opts = {
+        autoplay: true,
+        resumeSeason: card.dataset.resumeSeason
+          ? Number(card.dataset.resumeSeason) : undefined,
+        resumeEpisode: card.dataset.resumeEpisode
+          ? Number(card.dataset.resumeEpisode) : undefined,
+      };
+    }
+
     ContentModal.open({
       tmdbId: Number(card.dataset.id),
       mediaType: card.dataset.mediaType,
@@ -2944,7 +3498,7 @@
       // FASE 6.2 — passa pro Favorites pra gravar no Supabase.
       // Pode ser undefined (filme/série sem poster); a tabela aceita null.
       posterPath: card.dataset.posterPath || null,
-    });
+    }, opts);
   }
   function onCardKeydown(event) {
     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -2961,6 +3515,13 @@
   if ($myListRail) {
     $myListRail.addEventListener('click', onCardClick);
     $myListRail.addEventListener('keydown', onCardKeydown);
+  }
+
+  // FASE 8 — mesma delegação no rail "Continuar Assistindo".
+  var $continueRail = document.getElementById('continue-list');
+  if ($continueRail) {
+    $continueRail.addEventListener('click', onCardClick);
+    $continueRail.addEventListener('keydown', onCardKeydown);
   }
 
   /* ===== 6.1 Search wiring (Fase 3) ==================================== */
@@ -3529,6 +4090,7 @@
   loadFirstPage();       // primeira página do Trending
   smokeTestSupabase();   // FASE 6.1 — valida conectividade (não bloqueia)
   MyList.init();         // FASE 6.3 — busca favoritos em paralelo (não bloqueia)
+  ContinueWatching.init(); // FASE 8 — busca top 10 de watch_history em paralelo
   Auth.bind();           // FASE 7.1 — wire-up dos handlers do auth modal
 
   /**
@@ -3570,6 +4132,13 @@
         // precisa recarregar pq o init() rodou ANTES desse handler.
         if (prevUserId !== nextUserId) {
           MyList.reload();
+          // FASE 8 — invalida caches do HistoryService + re-fetcha rail.
+          if (typeof HistoryService !== 'undefined' && HistoryService.invalidate) {
+            HistoryService.invalidate();
+          }
+          if (typeof ContinueWatching !== 'undefined' && ContinueWatching.reload) {
+            ContinueWatching.reload();
+          }
         }
       }
     });

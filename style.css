@@ -1730,3 +1730,81 @@ body {
   .auth-modal__content { padding: 24px 20px 18px; }
   .auth-modal__title   { font-size: 1.15rem; }
 }
+
+/* ============================================================================
+   FASE 8 — Multi-player selector + Continuar Assistindo
+   ============================================================================
+   - .player__servers: tabs Servidor 1/2 acima do iframe
+   - .continue-card: card normal + badge "T1 · E03" sobreposto no canto inf
+*/
+
+/* ---- Server tabs (cima do iframe) -------------------------------------- */
+
+.player__servers {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 6px;
+  background: #000;            /* mesma cor do player body, sem borda */
+  flex-shrink: 0;
+}
+
+.player__server {
+  background: rgba(255, 255, 255, .06);
+  color: var(--fg-dim);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s, color .15s, border-color .15s;
+}
+
+.player__server:hover {
+  background: rgba(255, 255, 255, .1);
+  color: var(--fg);
+}
+
+.player__server--active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.player__server[disabled] {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* ---- Continuar Assistindo (rail na home) ------------------------------- */
+
+/*
+ * Reusa o estilo base de .card / .rail. O único delta é a badge inferior
+ * com S/E para séries (filmes não têm badge).
+ */
+.continue-card { position: relative; }
+
+.continue-card__badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;                   /* canto inf-esq do poster */
+  background: rgba(0, 0, 0, .82);
+  color: #fff;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .3px;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+  /* Pequena sombra pra contraste sobre cores claras do poster */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+}
+
+/*
+ * O .card já tem a estrutura: poster wrapper + textos abaixo. A badge
+ * fica posicionada absoluta dentro do article — vamos usar a posição
+ * relativa no card existente (já é position: relative pelo .card__poster).
+ */
+.continue-card .card__poster-wrap { position: relative; }
