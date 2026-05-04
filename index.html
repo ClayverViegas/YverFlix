@@ -108,6 +108,32 @@
 
   <main id="catalog" class="page">
     <!--
+      FASE 8 — "Continuar Assistindo".
+      Carrossel horizontal acima da Minha Lista. Mostra os 10 últimos
+      itens com play em watch_history (order by updated_at desc).
+
+      Cada card carrega um data-resume="<season>:<episode>" pra que o
+      click abra o ContentModal direto no player view com o S/E salvo
+      (deep linking).
+
+      Sync real-time: escuta `yverflix:history-changed` (disparado pelo
+      HistoryService no upsert) e aplica patch incremental — move pro
+      topo + atualiza badge S/E. Igual padrão do MyList.
+    -->
+    <section id="continue-section"
+             class="section section--rail"
+             aria-labelledby="continue-title"
+             hidden>
+      <div class="section__head">
+        <h2 id="continue-title" class="section__title">Continuar Assistindo</h2>
+        <p class="section__sub">De onde você parou</p>
+      </div>
+
+      <div id="continue-list" class="rail" role="list"
+           aria-label="Itens em andamento"></div>
+    </section>
+
+    <!--
       FASE 6.3 — "Minha Lista".
       Carrossel horizontal acima do Trending, com os favoritos do usuário.
 
@@ -295,11 +321,33 @@
           VIEW 2 — Player.
           iframe injetado em #player-mount somente quando o usuário
           aciona play. Sair desta view destrói o iframe (corta banda).
+
+          FASE 8 — server selector acima do iframe. Ao trocar, o iframe
+          é re-injetado com a URL do novo provider, mantendo o S/E atual.
         -->
         <section id="player-view"
                  class="modal__view modal__view--player"
                  aria-label="Player de vídeo"
                  hidden>
+          <div class="player__servers" role="tablist" aria-label="Servidor de vídeo">
+            <button type="button"
+                    role="tab"
+                    class="player__server player__server--active"
+                    id="server-tab-1"
+                    data-server="1"
+                    aria-selected="true">
+              Servidor 1
+            </button>
+            <button type="button"
+                    role="tab"
+                    class="player__server"
+                    id="server-tab-2"
+                    data-server="2"
+                    aria-selected="false">
+              Servidor 2
+            </button>
+          </div>
+
           <div class="modal__body" id="player-mount">
             <!-- iframe sandbox criado em ContentModal.enterPlayer() -->
           </div>
