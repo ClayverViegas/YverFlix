@@ -322,6 +322,64 @@
     };
   }
 
+  /*
+   * FASE 5 — Detalhes de uma série.
+   * Endpoint: /tv/{id}
+   * Usado para descobrir o número total de temporadas e a lista de
+   * temporadas disponíveis (com episode_count). Especiais (season 0)
+   * são incluídos.
+   */
+  async function getTvDetails(id, signal) {
+    assertApiKey();
+    var url = new URL(CONFIG.TMDB_BASE_URL + '/tv/' + encodeURIComponent(id));
+    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
+    url.searchParams.set('language', CONFIG.LANGUAGE);
+
+    var response = await fetchWithTimeout(url.toString(), { signal: signal });
+    var data = await response.json();
+    return {
+      id: data.id,
+      name: data.name || data.original_name || '',
+      numberOfSeasons: data.number_of_seasons || 0,
+      // Cada temporada: { season_number, name, episode_count }.
+      // Filtramos entradas inválidas (algumas séries antigas devolvem null).
+      seasons: (data.seasons || []).filter(function (s) {
+        return typeof s.season_number === 'number';
+      }).map(function (s) {
+        return {
+          season_number: s.season_number,
+          name: s.name || '',
+          episode_count: s.episode_count || 0,
+        };
+      }),
+    };
+  }
+
+  /*
+   * FASE 5 — Episódios de UMA temporada.
+   * Endpoint: /tv/{id}/season/{season}
+   * Retorna a lista de episódios já normalizada (number + name).
+   */
+  async function getSeasonEpisodes(id, seasonNumber, signal) {
+    assertApiKey();
+    var url = new URL(
+      CONFIG.TMDB_BASE_URL + '/tv/' +
+      encodeURIComponent(id) + '/season/' +
+      encodeURIComponent(seasonNumber)
+    );
+    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
+    url.searchParams.set('language', CONFIG.LANGUAGE);
+
+    var response = await fetchWithTimeout(url.toString(), { signal: signal });
+    var data = await response.json();
+    return (data.episodes || []).map(function (e) {
+      return {
+        number: e.episode_number,
+        name: e.name || ('Episódio ' + e.episode_number),
+      };
+    });
+  }
+
   function assertApiKey() {
     if (!CONFIG.TMDB_API_KEY) {
       throw new Error('TMDB API key ausente em CONFIG.TMDB_API_KEY.');
@@ -563,6 +621,326 @@
     return err.message || 'Erro desconhecido.';
   }
 
+  /* ----------------------- 5.0 SeriesEpisodes (FASE 5) ------------------ */
+
+  /*
+   * Módulo de Temporadas/Episódios. IIFE encapsula estado e cache.
+   *
+   * API pública:
+   *   SeriesEpisodes.mount(item, $container, onPlay)
+   *     - item:        { tmdbId, mediaType, title }
+   *     - $container:  elemento <aside> com os 3 sub-elementos esperados
+   *                    (#season-select, .episodes__loading, #episodes-list)
+   *     - onPlay(s,e): callback chamado quando o usuário clica num episódio.
+   *                    Recebe (seasonNumber, episodeNumber). É responsável
+   *                    por atualizar o src do iframe.
+   *
+   *   SeriesEpisodes.destroy()
+   *     - aborta requests pendentes, limpa listeners e esconde o painel.
+   *     - chamado no close() do PlayerModal.
+   *
+   * DECISÕES DE PERFORMANCE:
+   *   1) `cache` é um Object.create(null) NO ESCOPO DO IIFE — preservado
+   *      entre aberturas do modal. Reabrir a mesma série não dispara
+   *      nenhum fetch (REQUISITO 4 — cache de dados).
+   *   2) Detalhes + Temporada 1 são buscados em PARALELO via Promise.all
+   *      no mount(). Reduz pela metade o tempo até a primeira lista
+   *      renderizar (vs. encadeado).
+   *   3) AbortController por mount: trocar de série antes da resposta
+   *      chegar cancela request anterior e descarta resultado obsoleto.
+   *   4) Lista de episódios é renderizada via DocumentFragment — 1 reflow
+   *      em vez de N (um por episódio).
+   *   5) Cache de episódios é POR TEMPORADA — não baixamos todas as
+   *      temporadas de uma vez (lazy). Só fetcha a temporada selecionada.
+   */
+  var SeriesEpisodes = (function () {
+    'use strict';
+
+    /*
+     * Shape do cache:
+     *   cache[tmdbId] = {
+     *     detailsLoaded: bool,
+     *     totalSeasons:  number,
+     *     seasons:       [{ season_number, name, episode_count }],
+     *     episodes:      { [seasonNumber]: [{ number, name }] }
+     *   }
+     */
+    var cache = Object.create(null);
+
+    // Estado do mount ATUAL (apenas 1 série visível por vez no modal).
+    var current = null;
+
+    function ensureCacheEntry(tmdbId) {
+      if (!cache[tmdbId]) {
+        cache[tmdbId] = {
+          detailsLoaded: false,
+          totalSeasons: 0,
+          seasons: [],
+          episodes: {},
+        };
+      }
+      return cache[tmdbId];
+    }
+
+    function mount(item, $container, onPlay) {
+      // Guarda contra mount duplicado: se já existe, destrói antes.
+      destroy();
+
+      var c = {
+        tmdbId: item.tmdbId,
+        controller: new AbortController(),
+        $container: $container,
+        $select: $container.querySelector('#season-select'),
+        $loading: $container.querySelector('.episodes__loading'),
+        $list: $container.querySelector('#episodes-list'),
+        onPlay: onPlay,
+        currentSeason: 1,
+        currentEpisode: 1,
+      };
+      current = c;
+
+      $container.hidden = false;
+
+      // Listeners — todos com signal do AbortController p/ cleanup atômico.
+      c.$select.addEventListener('change', onSeasonChange,  { signal: c.controller.signal });
+      c.$list.addEventListener('click',    onEpisodeClick,  { signal: c.controller.signal });
+      c.$list.addEventListener('keydown',  onEpisodeKeydown, { signal: c.controller.signal });
+
+      // Carrega detalhes + temporada 1 em PARALELO (reduz TTI da lista).
+      loadInitial(item.tmdbId);
+    }
+
+    async function loadInitial(tmdbId) {
+      var c = current;
+      if (!c || c.tmdbId !== tmdbId) return;
+
+      var entry = ensureCacheEntry(tmdbId);
+      showLoading();
+
+      try {
+        var detailsPromise;
+        var episodesPromise;
+
+        // Cache hit em detalhes? Skip fetch.
+        if (entry.detailsLoaded) {
+          detailsPromise = Promise.resolve(entry);
+        } else {
+          detailsPromise = getTvDetails(tmdbId, c.controller.signal).then(function (d) {
+            entry.detailsLoaded = true;
+            entry.totalSeasons = d.numberOfSeasons;
+            entry.seasons = d.seasons;
+            return entry;
+          });
+        }
+
+        // Cache hit na temporada 1? Skip fetch.
+        if (entry.episodes[1]) {
+          episodesPromise = Promise.resolve(entry.episodes[1]);
+        } else {
+          episodesPromise = getSeasonEpisodes(tmdbId, 1, c.controller.signal).then(function (eps) {
+            entry.episodes[1] = eps;
+            return eps;
+          });
+        }
+
+        // Promise.all: paraleliza as 2 requests (perf decisão 2).
+        var results = await Promise.all([detailsPromise, episodesPromise]);
+        var episodes = results[1];
+
+        // Race guard: usuário pode ter trocado de série.
+        if (!current || current.tmdbId !== tmdbId) return;
+
+        renderSeasonOptions(entry.seasons, current.currentSeason);
+        renderEpisodes(episodes, current.currentEpisode);
+        hideLoading();
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        console.error('[Streaming MVP] Falha ao carregar série/temporada:', err);
+        hideLoading();
+        renderListError();
+      }
+    }
+
+    async function loadSeason(seasonNumber) {
+      var c = current;
+      if (!c) return;
+
+      var entry = ensureCacheEntry(c.tmdbId);
+
+      // CACHE HIT — render síncrono, ZERO fetch (REQUISITO 4).
+      if (entry.episodes[seasonNumber]) {
+        renderEpisodes(entry.episodes[seasonNumber], null);
+        return;
+      }
+
+      showLoading();
+      try {
+        var eps = await getSeasonEpisodes(c.tmdbId, seasonNumber, c.controller.signal);
+        if (!current || current.tmdbId !== c.tmdbId) return;
+        entry.episodes[seasonNumber] = eps;
+        renderEpisodes(eps, null);
+        hideLoading();
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        console.error('[Streaming MVP] Falha ao carregar temporada:', err);
+        hideLoading();
+        renderListError();
+      }
+    }
+
+    /* ---- handlers ---- */
+
+    function onSeasonChange(event) {
+      var season = Number(event.target.value);
+      if (!Number.isFinite(season)) return;
+      current.currentSeason = season;
+      loadSeason(season);
+    }
+
+    function onEpisodeClick(event) {
+      var li = event.target.closest('.episodes__item');
+      if (!li || !current.$list.contains(li)) return;
+      activateEpisode(Number(li.dataset.season), Number(li.dataset.episode));
+    }
+
+    function onEpisodeKeydown(event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      var li = event.target.closest('.episodes__item');
+      if (!li) return;
+      event.preventDefault();
+      activateEpisode(Number(li.dataset.season), Number(li.dataset.episode));
+    }
+
+    function activateEpisode(season, episode) {
+      if (!current) return;
+      current.currentSeason = season;
+      current.currentEpisode = episode;
+
+      // Marca o item ATIVO sem regerar a lista (zero re-render).
+      var items = current.$list.querySelectorAll('.episodes__item');
+      Array.prototype.forEach.call(items, function (it) {
+        var match = Number(it.dataset.season) === season && Number(it.dataset.episode) === episode;
+        it.classList.toggle('episodes__item--active', match);
+        it.setAttribute('aria-selected', match ? 'true' : 'false');
+      });
+
+      // Notifica o PlayerModal (ele atualiza o iframe.src).
+      if (typeof current.onPlay === 'function') current.onPlay(season, episode);
+    }
+
+    /* ---- render ---- */
+
+    function renderSeasonOptions(seasons, selected) {
+      var $sel = current.$select;
+      $sel.replaceChildren();
+
+      // Algumas séries têm season 0 ("Especiais"). Mantemos no <select>
+      // mas auto-seleção sempre prioriza temporada 1.
+      seasons.forEach(function (s) {
+        var opt = document.createElement('option');
+        opt.value = String(s.season_number);
+        var label;
+        if (s.season_number === 0) {
+          label = s.name || 'Especiais';
+        } else {
+          // Se TMDB já entrega "Temporada 1" / "Season 1", usamos.
+          label = s.name && /Season|Temporada/i.test(s.name)
+            ? s.name
+            : 'Temporada ' + s.season_number;
+        }
+        if (s.episode_count) label += ' · ' + s.episode_count + ' ep';
+        opt.textContent = label;
+        $sel.appendChild(opt);
+      });
+
+      // Garante que selected está nas opções; senão pega a primeira.
+      var found = Array.prototype.some.call($sel.options, function (o) {
+        return Number(o.value) === selected;
+      });
+      $sel.value = found ? String(selected) : ($sel.options[0] ? $sel.options[0].value : '');
+      if (!found && $sel.options[0]) {
+        current.currentSeason = Number($sel.options[0].value);
+      }
+    }
+
+    function renderEpisodes(episodes, activeEpisode) {
+      var $list = current.$list;
+      $list.replaceChildren();
+
+      if (!episodes || !episodes.length) {
+        var empty = document.createElement('li');
+        empty.className = 'episodes__empty';
+        empty.textContent = 'Nenhum episódio encontrado nesta temporada.';
+        $list.appendChild(empty);
+        return;
+      }
+
+      // DocumentFragment → 1 único reflow (perf decisão 4).
+      var fragment = document.createDocumentFragment();
+      episodes.forEach(function (ep) {
+        var li = document.createElement('li');
+        li.className = 'episodes__item';
+        li.setAttribute('role', 'option');
+        li.tabIndex = 0;
+        li.dataset.season = String(current.currentSeason);
+        li.dataset.episode = String(ep.number);
+
+        var isActive = activeEpisode && ep.number === activeEpisode;
+        if (isActive) li.classList.add('episodes__item--active');
+        li.setAttribute('aria-selected', isActive ? 'true' : 'false');
+
+        var num = document.createElement('span');
+        num.className = 'episodes__num';
+        // Formato "E01 - Pilot" (REQUISITO de UI).
+        var n = ep.number;
+        num.textContent = 'E' + (n < 10 ? '0' + n : n);
+
+        var title = document.createElement('span');
+        title.className = 'episodes__title';
+        // textContent → safe contra XSS no nome do episódio.
+        title.textContent = ep.name;
+
+        li.appendChild(num);
+        li.appendChild(title);
+        fragment.appendChild(li);
+      });
+      $list.appendChild(fragment);
+    }
+
+    function renderListError() {
+      current.$list.replaceChildren();
+      var li = document.createElement('li');
+      li.className = 'episodes__empty';
+      li.textContent = 'Erro ao carregar episódios. Tente outra temporada.';
+      current.$list.appendChild(li);
+    }
+
+    function showLoading() {
+      if (!current) return;
+      if (current.$loading) current.$loading.hidden = false;
+      current.$list.setAttribute('aria-busy', 'true');
+    }
+
+    function hideLoading() {
+      if (!current) return;
+      if (current.$loading) current.$loading.hidden = true;
+      current.$list.setAttribute('aria-busy', 'false');
+    }
+
+    function destroy() {
+      if (!current) return;
+      // 1 abort() = remove todos os listeners + cancela requests pendentes.
+      try { current.controller.abort(); } catch (e) { /* noop */ }
+      if (current.$container) current.$container.hidden = true;
+      if (current.$select)    current.$select.replaceChildren();
+      if (current.$list)      current.$list.replaceChildren();
+      if (current.$loading)   current.$loading.hidden = true;
+      current = null;
+    }
+
+    return { mount: mount, destroy: destroy };
+  })();
+
   /* ----------------------- 5. Player Modal ------------------------------ */
 
   /**
@@ -578,18 +956,40 @@
    *   - lastFocused   : elemento que tinha foco antes de abrir (restaurado no close)
    */
   var PlayerModal = (function () {
-    var $modal     = document.getElementById('player-modal');
-    var $title     = document.getElementById('player-title');
-    var $mount     = document.getElementById('player-mount');
-    var $closeBtns = $modal.querySelectorAll('[data-modal-close]');
+    var $modal          = document.getElementById('player-modal');
+    var $title          = document.getElementById('player-title');
+    var $mount          = document.getElementById('player-mount');
+    var $episodesPanel  = document.getElementById('episodes-panel');
+    var $closeBtns      = $modal.querySelectorAll('[data-modal-close]');
 
     var IFRAME_LOAD_TIMEOUT_MS = 12000;
     var SUPERFLIX_BASE = 'https://superflixapi.online';
+
+    /*
+     * FASE 5 — Sandbox do iframe (BLOQUEIO DE ANÚNCIOS).
+     *
+     * Lista permissiva MÍNIMA — exatamente o que o player precisa:
+     *   - allow-forms          → submeter forms (alguns players usam)
+     *   - allow-scripts        → executar JS do player
+     *   - allow-same-origin    → manter origin do superflix (cookies/storage)
+     *   - allow-presentation   → permitir Presentation API (cast/fullscreen)
+     *
+     * O QUE FICA BLOQUEADO (= ad mitigation):
+     *   - allow-popups          → window.open(), target=_blank → bloqueado
+     *   - allow-modals          → alert/confirm/prompt → bloqueado
+     *   - allow-top-navigation  → o iframe NÃO pode redirecionar nossa página
+     *   - allow-pointer-lock, allow-downloads, etc. → todos negados
+     *
+     * Resultado: redirects agressivos do Superflix são neutralizados.
+     */
+    var IFRAME_SANDBOX = 'allow-forms allow-scripts allow-same-origin allow-presentation';
 
     var state = {
       isOpen: false,
       iframe: null,
       currentItem: null,
+      currentSeason: null,    // FASE 5 — temporada ATIVA (apenas tv)
+      currentEpisode: null,   // FASE 5 — episódio ATIVO (apenas tv)
       loadTimerId: 0,
       cleanups: null,
       lastFocused: null,
@@ -598,10 +998,17 @@
     /**
      * Constrói a URL do iframe conforme o tipo de mídia.
      * REQUISITO: movie → /filme/{id} ; tv → /serie/{id}.
+     * FASE 5: para séries, anexa ?season=S&episode=E quando ambos
+     * são fornecidos (REQUISITO 5 — player dinâmico).
      */
-    function buildPlayerUrl(mediaType, tmdbId) {
+    function buildPlayerUrl(mediaType, tmdbId, season, episode) {
       var pathSegment = mediaType === 'movie' ? 'filme' : 'serie';
-      return SUPERFLIX_BASE + '/' + pathSegment + '/' + encodeURIComponent(tmdbId);
+      var url = SUPERFLIX_BASE + '/' + pathSegment + '/' + encodeURIComponent(tmdbId);
+      if (mediaType === 'tv' && season && episode) {
+        url += '?season=' + encodeURIComponent(season) +
+               '&episode=' + encodeURIComponent(episode);
+      }
+      return url;
     }
 
     /**
@@ -616,6 +1023,12 @@
       state.currentItem = item;
       state.lastFocused = document.activeElement;
 
+      // FASE 5 — para séries, default S1E1 (UX Netflix-like: o player já
+      // arranca tocando o piloto sem o usuário precisar clicar).
+      var isTv = item.mediaType === 'tv';
+      state.currentSeason  = isTv ? 1 : null;
+      state.currentEpisode = isTv ? 1 : null;
+
       // AbortController: 1 abort() = todos os listeners desligados.
       state.cleanups = new AbortController();
       var sig = state.cleanups.signal;
@@ -625,8 +1038,9 @@
       document.body.style.overflow = 'hidden';
       if (scrollbarW > 0) document.body.style.paddingRight = scrollbarW + 'px';
 
-      // 2) Header e estado de loading no body.
+      // 2) Header + classe modal--tv (CSS adapta layout para séries).
       $title.textContent = item.title || 'Player';
+      $modal.classList.toggle('modal--tv', isTv);
       renderLoadingState();
 
       // 3) Cria o iframe DINAMICAMENTE — não existe no HTML.
@@ -636,10 +1050,10 @@
       iframe.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
       iframe.allowFullscreen = true;
       iframe.referrerPolicy = 'no-referrer';
-      // Atributos de performance/segurança:
-      //   loading='lazy' não se aplica (modal só abre on-demand);
-      //   sandbox propositalmente ausente — o player precisa de scripts
-      //   e same-origin para funcionar.
+
+      // FASE 5 — SANDBOX (BLOQUEIO DE ANÚNCIOS — REQUISITO 6).
+      // Sem allow-popups e sem allow-modals: redirects do Superflix são bloqueados.
+      iframe.setAttribute('sandbox', IFRAME_SANDBOX);
 
       // 4) Listeners do iframe — agrupados no AbortController.
       iframe.addEventListener('load', onIframeLoad, { signal: sig, once: true });
@@ -651,7 +1065,8 @@
       }, IFRAME_LOAD_TIMEOUT_MS);
 
       // 6) src é o ÚLTIMO passo — só agora a request começa.
-      iframe.src = buildPlayerUrl(item.mediaType, item.tmdbId);
+      iframe.src = buildPlayerUrl(item.mediaType, item.tmdbId,
+                                   state.currentSeason, state.currentEpisode);
       state.iframe = iframe;
 
       // 7) Anexa o iframe ao mount.
@@ -667,12 +1082,45 @@
         btn.addEventListener('click', close, { signal: sig });
       });
 
-      // 10) Foco inicial no botão fechar (acessibilidade).
+      // 10) FASE 5 — monta painel de Temporadas/Episódios (SOMENTE p/ tv).
+      //     onPlayEpisode é o callback que troca o src do iframe.
+      if (isTv && $episodesPanel && typeof SeriesEpisodes !== 'undefined') {
+        SeriesEpisodes.mount(item, $episodesPanel, onPlayEpisode);
+      }
+
+      // 11) Foco inicial no botão fechar (acessibilidade).
       //     setTimeout 0 para garantir que o modal já está visível.
       setTimeout(function () {
         var closeBtn = $modal.querySelector('.modal__close');
         if (closeBtn) closeBtn.focus();
       }, 0);
+    }
+
+    /*
+     * FASE 5 — Callback chamado pelo SeriesEpisodes quando o usuário
+     * clica num episódio. Atualiza o src do iframe SEM destruí-lo
+     * (mantém o player montado, troca só a URL).
+     *
+     * POR QUÊ não recriar o iframe:
+     *   - Trocar src dispara um navigation (cheap), não um destroy/create.
+     *   - Mantém os listeners e o sandbox já configurados.
+     *   - Evita o flash de "Carregando player…" entre episódios.
+     */
+    function onPlayEpisode(seasonNumber, episodeNumber) {
+      if (!state.isOpen || !state.iframe || !state.currentItem) return;
+      state.currentSeason  = seasonNumber;
+      state.currentEpisode = episodeNumber;
+      var newUrl = buildPlayerUrl(
+        state.currentItem.mediaType,
+        state.currentItem.tmdbId,
+        seasonNumber,
+        episodeNumber
+      );
+      // Decisão de performance: trocar `src` direto é o caminho mais barato.
+      // O sandbox e listeners do iframe permanecem intactos.
+      try { state.iframe.src = newUrl; } catch (e) {
+        console.error('[Streaming MVP] Falha ao trocar episódio:', e);
+      }
     }
 
     /**
@@ -685,6 +1133,10 @@
       // 1) Cancela timer + desliga TODOS os listeners de uma vez.
       if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
       if (state.cleanups)    { state.cleanups.abort(); state.cleanups = null; }
+
+      // 1.5) FASE 5 — desmonta painel de séries (aborta requests e listeners).
+      if (typeof SeriesEpisodes !== 'undefined') SeriesEpisodes.destroy();
+      $modal.classList.remove('modal--tv');
 
       // 2) Remove o iframe DE VERDADE.
       //    src = 'about:blank' ANTES de removeChild — passo essencial:
@@ -712,6 +1164,8 @@
       }
       state.lastFocused = null;
       state.currentItem = null;
+      state.currentSeason = null;
+      state.currentEpisode = null;
       state.isOpen = false;
     }
 
@@ -806,7 +1260,12 @@
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       if (state.currentItem) {
-        link.href = buildPlayerUrl(state.currentItem.mediaType, state.currentItem.tmdbId);
+        link.href = buildPlayerUrl(
+          state.currentItem.mediaType,
+          state.currentItem.tmdbId,
+          state.currentSeason,
+          state.currentEpisode
+        );
       }
 
       actions.appendChild(retry);

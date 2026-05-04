@@ -604,3 +604,181 @@ body {
   }
   .modal__body { aspect-ratio: auto; flex: 1; max-height: none; }
 }
+
+/* ============================================================
+   FASE 5 — Estrutura de Séries (Temporadas e Episódios)
+   ============================================================
+   Painel posicionado ABAIXO do player, dentro do .modal__panel.
+   Só renderiza quando o item é uma série (mediaType === 'tv').
+
+   Decisões de performance/UX:
+   - Quando o modal está em modo TV (.modal--tv), o .modal__body
+     deixa de ser 16:9 puro e vira altura clamp(...vh) — assim o
+     player e a lista cabem juntos sem scroll do modal inteiro.
+     A lista tem seu próprio overflow-y, evitando reflow do iframe.
+   - <select> usa appearance: none + chevron SVG inline.
+     Acessibilidade nativa do <select> é mantida.
+   - .episodes__item usa transform/background na transição (GPU)
+     em vez de propriedades que causam layout (top, left, height).
+   ============================================================ */
+
+/* Em modo série: reduz altura do player p/ caber a lista de episódios. */
+.modal--tv .modal__body {
+  aspect-ratio: auto;
+  height: clamp(220px, 52vh, 600px);
+  flex: 0 0 auto;
+}
+
+/* Wrapper do painel de episódios (oculto via [hidden] em filme). */
+.episodes {
+  display: flex; flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;            /* permite que o filho .episodes__list scrolle */
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.episodes__head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,255,255,.02), transparent);
+}
+.episodes__label {
+  flex: 0 0 auto;
+  font-size: .85rem;
+  color: var(--muted);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* Wrap do <select> + chevron custom. */
+.episodes__select-wrap {
+  position: relative;
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+.episodes__select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding: 9px 36px 9px 14px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: .95rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.episodes__select:hover { background: var(--bg-elev-2); }
+.episodes__select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(229, 9, 20, .15);
+}
+.episodes__select:disabled {
+  opacity: .5; cursor: not-allowed;
+}
+.episodes__select option {
+  background: var(--bg-elev);   /* fallback p/ Firefox */
+  color: var(--fg);
+}
+.episodes__chevron {
+  position: absolute; right: 10px; top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--muted);
+  display: inline-flex;
+}
+
+/* Estado de loading inline (só na lista, não no modal inteiro). */
+.episodes__loading {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px;
+  color: var(--muted);
+  font-size: .9rem;
+  border-bottom: 1px solid var(--border);
+}
+.episodes__loading[hidden] { display: none; }
+
+/* Spinner pequeno (variante do .spinner). */
+.spinner--sm {
+  width: 16px; height: 16px;
+  border-width: 2px;
+}
+
+/* Lista de episódios — scrollável internamente. */
+.episodes__list {
+  list-style: none;
+  margin: 0; padding: 6px 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* Scrollbar discreta. */
+.episodes__list::-webkit-scrollbar { width: 8px; }
+.episodes__list::-webkit-scrollbar-thumb {
+  background: var(--bg-elev-2);
+  border-radius: 4px;
+}
+.episodes__list::-webkit-scrollbar-track { background: transparent; }
+
+.episodes__item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 11px 16px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  /* só transitions GPU-friendly: cor de borda esquerda + bg */
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+  outline: none;
+}
+.episodes__item:hover {
+  background: var(--bg-elev);
+  border-left-color: rgba(229, 9, 20, .35);
+}
+.episodes__item:focus-visible {
+  background: var(--bg-elev);
+  border-left-color: var(--accent);
+}
+.episodes__item--active {
+  background: var(--bg-elev-2);
+  border-left-color: var(--accent);
+}
+.episodes__item--active .episodes__num { color: var(--accent); }
+
+.episodes__num {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: .9rem;
+  color: var(--muted);
+  min-width: 36px;
+}
+.episodes__title {
+  flex: 1 1 auto;
+  font-size: .95rem;
+  color: var(--fg);
+  /* Trunca títulos muito longos. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.episodes__empty {
+  padding: 20px 16px;
+  color: var(--muted);
+  text-align: center;
+  font-size: .9rem;
+}
+
+/* Mobile: episódios ocupam o resto da tela embaixo do player. */
+@media (max-width: 480px) {
+  .modal--tv .modal__body { height: 56vw; min-height: 200px; }
+  .episodes__head { padding: 10px 12px; }
+  .episodes__item { padding: 12px 14px; }
+}
+
+/* Respeita prefers-reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+  .episodes__item { transition: none; }
+}
