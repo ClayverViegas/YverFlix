@@ -184,6 +184,33 @@
 
         <h2 id="player-title" class="modal__title">Detalhes</h2>
 
+        <!--
+          Botão Favoritar (FASE 6.2).
+          - Posicionado entre o título e o botão fechar (requisito).
+          - Estados: disabled+spinner (carregando), outline (não fav),
+            filled (fav). Toggle em runtime via classes do JS.
+          - aria-pressed reflete o estado real (acessibilidade).
+          - Hidden em view='player' (modal__back assume aquele slot
+            visualmente — mantemos o coração só na tela de detalhes).
+          - O <svg> serve aos dois estados — preenchimento controlado
+            por CSS (.modal__fav--active fill=currentColor).
+        -->
+        <button type="button"
+                class="modal__fav"
+                id="modal-fav"
+                hidden
+                disabled
+                aria-pressed="false"
+                aria-label="Adicionar aos favoritos">
+          <svg class="modal__fav-icon" viewBox="0 0 24 24" width="20" height="20"
+               fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+          </svg>
+          <span class="modal__fav-spinner" aria-hidden="true"></span>
+          <span class="visually-hidden modal__fav-label">Favoritar</span>
+        </button>
+
         <button type="button"
                 class="modal__close"
                 data-modal-close
