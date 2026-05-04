@@ -13,6 +13,12 @@
   <link rel="preconnect" href="https://api.themoviedb.org" crossorigin />
   <link rel="preconnect" href="https://image.tmdb.org" crossorigin />
 
+  <!--
+    FASE 6.1 — Persistência via Supabase.
+    Preconnect ao endpoint do projeto reduz latência da primeira request.
+  -->
+  <link rel="preconnect" href="https://oxgibqccznmysncubkct.supabase.co" crossorigin />
+
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -221,6 +227,16 @@
       </div>
     </div>
   </div>
+
+  <!--
+    FASE 6.1 — Supabase JS v2 via CDN oficial (UMD bundle).
+    Carregado SEM defer e ANTES do nosso app.js (que está com defer)
+    pra garantir que o global `supabase` já exista no momento em que
+    o app.js executa o `createClient()`.
+    Pino na major v2 (jsdelivr resolve pra última 2.x) — atualização
+    automática de patch/minor sem quebrar API.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <!--
     defer (em vez de type="module") para manter compatível com a

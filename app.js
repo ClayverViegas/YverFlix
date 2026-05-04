@@ -96,6 +96,102 @@
     CAST_LIMIT: 12,               // FASE 6 — máx. atores no carrossel
   });
 
+  /* ----------------------- 1.b Supabase (FASE 6.1) ---------------------- */
+
+  /**
+   * Configuração do Supabase — Project URL + Publishable Key.
+   *
+   * SEGURANÇA: a `publishable key` (formato `sb_publishable_...`) é o
+   * substituto novo do `anon key` e é DESENHADA pra ficar pública no
+   * client. Quem protege os dados são as policies de RLS (Row Level
+   * Security) no Postgres do Supabase. Não é credencial sensível —
+   * pode commitar no repo público sem problema.
+   *
+   * NUNCA usar `service_role` key no front (essa sim bypassa RLS).
+   */
+  var SUPABASE_CONFIG = Object.freeze({
+    URL: 'https://oxgibqccznmysncubkct.supabase.co',
+    PUBLISHABLE_KEY: 'sb_publishable_Sl4wOBxdNlpdYtyxN4H5GQ_fKcHTKHw',
+  });
+
+  /**
+   * Cliente Supabase global. Inicializado ANTES de qualquer módulo IIFE
+   * pra que `loadFavorites()`, `loadWatchHistory()`, etc. (próximas fases)
+   * possam usá-lo direto.
+   *
+   * Decisões:
+   *  - `auth.persistSession: false` — ainda não usamos auth (só leitura
+   *    pública). Quando entrarmos em login, viramos pra true.
+   *  - `auth.autoRefreshToken: false` — idem.
+   *  - Exposto em `window.YverFlix.supabase` (não polui `window` direto)
+   *    pra facilitar debug no DevTools sem expor uma variável solta.
+   *  - Guard pro caso do CDN não ter carregado (fallback gracioso: app
+   *    ainda funciona, só sem persistência).
+   */
+  var supabaseClient = null;
+  if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+    supabaseClient = window.supabase.createClient(
+      SUPABASE_CONFIG.URL,
+      SUPABASE_CONFIG.PUBLISHABLE_KEY,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
+    window.YverFlix = window.YverFlix || {};
+    window.YverFlix.supabase = supabaseClient;
+    console.log('[Supabase] Cliente inicializado →', SUPABASE_CONFIG.URL);
+  } else {
+    console.warn('[Supabase] CDN não carregou — persistência desabilitada.');
+  }
+
+  /**
+   * Smoke test de conectividade — FASE 6.1 REQUISITO 4.
+   *
+   * Tenta um SELECT numa tabela inexistente (`_yverflix_ping`). Cenários:
+   *
+   *   ✓ status 404 + error.code === 'PGRST205' (PostgREST: tabela não
+   *     encontrada) → CONEXÃO OK. CORS, headers de auth e o projeto estão
+   *     todos válidos — só não tem tabela com esse nome (esperado).
+   *
+   *   ✗ TypeError "Failed to fetch" / network error → CORS bloqueado ou
+   *     URL errada.
+   *
+   *   ✗ status 401/403 → publishable key inválida ou expirada.
+   *
+   *   ✗ status 5xx → projeto pausado/quebrado no Supabase.
+   *
+   * Loga TUDO no console pra Clayver verificar visualmente. Não bloqueia
+   * o boot do catálogo (roda em IIFE async sem await no thread principal).
+   */
+  function smokeTestSupabase() {
+    if (!supabaseClient) return;
+    var t0 = performance.now();
+    supabaseClient
+      .from('_yverflix_ping')
+      .select('*')
+      .limit(1)
+      .then(function (res) {
+        var dt = (performance.now() - t0).toFixed(1);
+        var ok = res.error && res.error.code === 'PGRST205';
+        console.log(
+          '[Supabase] smoke test (' + dt + 'ms):',
+          ok ? '✓ CONEXÃO OK' : '⚠ verificar resposta',
+          {
+            data: res.data,
+            error: res.error,
+            status: res.status,
+            statusText: res.statusText,
+          }
+        );
+      })
+      .catch(function (err) {
+        console.error('[Supabase] smoke test FALHOU (rede/CORS):', err);
+      });
+  }
+
   /* ----------------------- 2. Camada HTTP ------------------------------- */
 
   /**
@@ -2408,4 +2504,5 @@
 
   loadGenres();          // chips em paralelo (não bloqueia o grid)
   loadFirstPage();       // primeira página do Trending
+  smokeTestSupabase();   // FASE 6.1 — valida conectividade (não bloqueia)
 })();
