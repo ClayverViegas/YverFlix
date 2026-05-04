@@ -791,9 +791,12 @@
   }
 
   function formatMeta(item) {
-    var year  = item.releaseDate ? item.releaseDate.slice(0, 4) : '—';
+    // FASE 6.3 — itens vindos de Minha Lista (Supabase) podem não ter
+    // releaseDate, pois a tabela favorites guarda só o essencial.
+    // Nesse caso mostramos só "Filme"/"Série" sem o "• —" feio.
+    var year  = item.releaseDate ? item.releaseDate.slice(0, 4) : '';
     var kind  = item.type === 'movie' ? 'Filme' : 'Série';
-    return kind + ' • ' + year;
+    return year ? (kind + ' • ' + year) : kind;
   }
 
   /** Estado de erro com botão de retry. */
@@ -1738,8 +1741,37 @@
    *     direto pelo id (faster do que pelo composto).
    */
   var Favorites = (function () {
-    var USER_ID = 'user_teste_123';     // FASE 6.3 → trocar por auth.user.id
+    /*
+     * FASE 6.3 — fica fácil trocar por auth.user.id depois.
+     * Exposto via getUserId() pro módulo MyList consumir.
+     */
+    var USER_ID = 'user_teste_123';
     var $btn = document.getElementById('modal-fav');
+
+    /**
+     * FASE 6.3 — Evento custom que avisa o resto do app que um favorito
+     * foi adicionado/removido. Só disparamos APÓS o servidor confirmar
+     * (não no optimistic UI) — assim, se a request falhar e o coração
+     * reverter, a Home não fica com fantasmas.
+     *
+     * detail: { action: 'added'|'removed', item: {tmdbId,mediaType,title,posterPath,id?} }
+     *
+     * Decoupling: Favorites NÃO conhece MyList. Qualquer módulo (badge
+     * "12 favoritos", contador no header, etc) pode escutar o mesmo evento.
+     */
+    function emitChange(action, item, rowId) {
+      var detail = {
+        action: action,
+        item: {
+          tmdbId: item.tmdbId,
+          mediaType: item.mediaType,
+          title: item.title || null,
+          posterPath: item.posterPath || null,
+          id: rowId || null,
+        },
+      };
+      window.dispatchEvent(new CustomEvent('yverflix:favorites-changed', { detail: detail }));
+    }
 
     /** @type {object|null} Cliente Supabase (null se CDN não carregou) */
     function getClient() {
@@ -1877,6 +1909,15 @@
             } else if (!willBeActive) {
               currentRowId = null;
             }
+            // FASE 6.3 — dispara evento APÓS o server confirmar.
+            // MyList (e quem mais escutar) faz patch incremental no DOM.
+            // Em UNIQUE violation NÃO emitimos: o item já estava lá,
+            // ninguém precisa reagir.
+            emitChange(
+              willBeActive ? 'added' : 'removed',
+              item,
+              willBeActive ? currentRowId : null
+            );
           }
           setLoading(false);
         })
@@ -1939,10 +1980,215 @@
       }, 400);
     }
 
+    /**
+     * FASE 6.3 — Lista TODOS os favoritos do usuário, ordenados pelo
+     * mais recente. Usado pelo MyList no boot.
+     *
+     * @returns {Promise<Array<{id,user_id,tmdb_id,media_type,title,poster_path,added_at}>>}
+     */
+    function list() {
+      var supa = getClient();
+      if (!supa) return Promise.resolve([]);
+      // Ordeno por `id` (BIGSERIAL) DESC — id é monotonicamente
+      // crescente, então é uma boa proxy de "mais recente primeiro"
+      // mesmo se o schema do projeto não tiver a coluna `added_at`
+      // (ex.: tabela criada manualmente antes do migration). Robusto.
+      return supa
+        .from('favorites')
+        .select('id, user_id, tmdb_id, media_type, title, poster_path')
+        .eq('user_id', USER_ID)
+        .order('id', { ascending: false })
+        .then(function (res) {
+          if (res.error) {
+            console.warn('[Favorites] list erro:', res.error);
+            return [];
+          }
+          return res.data || [];
+        });
+    }
+
+    function getUserId() { return USER_ID; }
+
     return {
       attach: attach,
       detach: detach,
+      list: list,
+      getUserId: getUserId,
     };
+  })();
+
+  /* ----------------------- 4.6 Minha Lista (FASE 6.3) ------------------- */
+
+  /**
+   * FASE 6.3 — Render da "Minha Lista" na home + sincronização real-time.
+   *
+   * Por que reativo via CustomEvent ('yverflix:favorites-changed'):
+   *   1. Decoupling — Favorites não conhece MyList. Qualquer módulo
+   *      futuro (contador, page dedicada de favoritos, badge no header)
+   *      pode escutar o MESMO evento sem que Favorites mude.
+   *   2. Sem dependência externa — `window.dispatchEvent` é DOM nativo,
+   *      zero overhead vs pub/sub manual.
+   *   3. Sem polling — só reage quando algo muda de verdade.
+   *
+   * Por que NÃO usar Supabase Realtime (websocket):
+   *   - É single-user (sem multi-device sync por enquanto). O canal ws
+   *     custaria banda + handshake sem trazer nada de útil.
+   *   - Quando entrar auth + multi-device na Fase 7+, plugar Realtime
+   *     é trivial: o handler do canal só precisa disparar o MESMO evento.
+   *
+   * Por que patch incremental (vs. re-fetch + re-render):
+   *   - O evento já carrega o item afetado (insert/delete) — não preciso
+   *     bater no banco de novo.
+   *   - DOM mutation O(1): `insertBefore` (added) ou `element.remove()`
+   *     (removed). O grid principal e o resto do site NÃO são tocados.
+   *   - Mantenho um Map<key, element> em closure pra encontrar o card
+   *     a remover em O(1) sem `querySelector`.
+   *   - Zero flicker, zero layout thrash, zero refetch.
+   */
+  var MyList = (function () {
+    var $section = document.getElementById('my-list-section');
+    var $list = document.getElementById('my-list');
+
+    /**
+     * Index dos cards montados, chave: "<media_type>:<tmdb_id>".
+     * Mantém referência direta ao DOM element pra remover sem querySelector.
+     * @type {Object<string, HTMLElement>}
+     */
+    var byKey = Object.create(null);
+
+    function key(mediaType, tmdbId) {
+      return mediaType + ':' + tmdbId;
+    }
+
+    /**
+     * Converte uma row do Supabase no shape de MediaItem que createCard
+     * consome. Ano/rating ficam vazios — formatMeta da Fase 6.3 mostra
+     * só "Filme"/"Série" quando releaseDate é falsy.
+     */
+    function rowToItem(row) {
+      return {
+        tmdbId: row.tmdb_id,
+        type: row.media_type,
+        title: row.title || 'Sem título',
+        posterPath: row.poster_path || null,
+        posterUrl: row.poster_path
+          ? CONFIG.TMDB_IMG_BASE + '/' + CONFIG.POSTER_SIZE + row.poster_path
+          : null,
+        voteAverage: 0,         // não exibido (createCard checa > 0)
+        releaseDate: '',        // formatMeta omite quando vazio
+      };
+    }
+
+    /**
+     * Cria o elemento do card e registra suas imagens lazy no observer
+     * compartilhado. Reusa createCard() — mesma estética do grid.
+     */
+    function buildCardElement(item) {
+      var fragment = createCard(item);
+      var article = fragment.querySelector('.card');
+      // appendChild move os children do fragment pro novo parent —
+      // mas o ref pro article continua válido.
+      var lazy = fragment.querySelectorAll('img[data-src]');
+      // Wrapper retorna o fragment pra quem inserir, mas também
+      // exponho o article pra indexar. Vou retornar { article, fragment, lazy }.
+      return { article: article, fragment: fragment, lazyImgs: lazy };
+    }
+
+    function show() { $section.hidden = false; }
+    function hide() { $section.hidden = true; }
+
+    /**
+     * Boot: 1 fetch ao carregar a página. NÃO bloqueia o Trending.
+     * Em paralelo a loadFirstPage / loadGenres.
+     */
+    function init() {
+      // Listener registrado UMA vez — já cobre eventos futuros, mesmo
+      // que o fetch inicial falhe.
+      window.addEventListener('yverflix:favorites-changed', onChanged);
+
+      Favorites.list()
+        .then(function (rows) {
+          if (!rows.length) {
+            hide();
+            console.log('[MyList] sem favoritos — section hidden.');
+            return;
+          }
+          var frag = document.createDocumentFragment();
+          var allLazy = [];
+          for (var i = 0; i < rows.length; i++) {
+            var item = rowToItem(rows[i]);
+            var built = buildCardElement(item);
+            byKey[key(item.type, item.tmdbId)] = built.article;
+            frag.appendChild(built.fragment);
+            for (var j = 0; j < built.lazyImgs.length; j++) {
+              allLazy.push(built.lazyImgs[j]);
+            }
+          }
+          $list.appendChild(frag);
+          // Re-observa imagens (fragmento já está em DOM, mas o ref
+          // segue válido). Igual padrão de renderCards.
+          for (var k = 0; k < allLazy.length; k++) {
+            imageObserver.observe(allLazy[k]);
+          }
+          show();
+          console.log('[MyList] carregada com', rows.length, 'favorito(s).');
+        })
+        .catch(function (err) {
+          // Falha aqui não derruba o app — só esconde a seção.
+          console.warn('[MyList] init falhou:', err);
+          hide();
+        });
+    }
+
+    function onChanged(e) {
+      var d = e && e.detail;
+      if (!d || !d.item) return;
+      if (d.action === 'added')         addOne(d.item);
+      else if (d.action === 'removed')  removeOne(d.item);
+    }
+
+    /**
+     * Patch O(1): insere o card novo no INÍCIO do trilho (favorito
+     * mais recente fica primeiro — igual ao .order('added_at', desc)
+     * do fetch inicial). Sem refetch.
+     */
+    function addOne(item) {
+      var k = key(item.mediaType, item.tmdbId);
+      if (byKey[k]) return;            // defesa contra duplo-add (UNIQUE no banco já cobre)
+
+      var built = buildCardElement(rowToItem({
+        tmdb_id: item.tmdbId,
+        media_type: item.mediaType,
+        title: item.title,
+        poster_path: item.posterPath,
+      }));
+      byKey[k] = built.article;
+      // prepend no trilho (mais recente primeiro)
+      $list.insertBefore(built.fragment, $list.firstChild);
+      for (var i = 0; i < built.lazyImgs.length; i++) {
+        imageObserver.observe(built.lazyImgs[i]);
+      }
+      show();
+    }
+
+    /**
+     * Patch O(1): remove só o card afetado. Sem querySelector — uso o
+     * Map indexado por chave composta. Se o trilho ficar vazio, esconde
+     * a section (UI limpa).
+     */
+    function removeOne(item) {
+      var k = key(item.mediaType, item.tmdbId);
+      var el = byKey[k];
+      if (!el) return;
+      // unobserve as imgs do card antes de remover (libera o observer)
+      var imgs = el.querySelectorAll('img');
+      for (var i = 0; i < imgs.length; i++) imageObserver.unobserve(imgs[i]);
+      el.remove();
+      delete byKey[k];
+      if (!$list.children.length) hide();
+    }
+
+    return { init: init };
   })();
 
   /* ----------------------- 5. Content Modal (Fase 6) -------------------- */
@@ -2381,7 +2627,11 @@
 
   /* Refs do header da seção e dos elementos de paginação. */
   var $sectionTitle = document.getElementById('trending-title');
-  var $sectionSub   = document.querySelector('.section__sub');
+  // FASE 6.3 — escopa o `.section__sub` ao header do Trending. Antes
+  // era `document.querySelector('.section__sub')`, que pegava o
+  // PRIMEIRO match — agora a seção "Minha Lista" também tem um
+  // `.section__sub` e estaria sendo sobrescrita.
+  var $sectionSub   = $sectionTitle.parentElement.querySelector('.section__sub');
   var $loadMore     = document.getElementById('grid-loadmore');
   var $sentinel     = document.getElementById('grid-sentinel');
   var $chips        = document.getElementById('genres-chips');
@@ -2554,7 +2804,7 @@
 
   /* ===== Click delegation no grid (cards → ContentModal) =============== */
 
-  $grid.addEventListener('click', function (event) {
+  function onCardClick(event) {
     var card = event.target.closest('.card');
     if (!card || !card.dataset.id) return;       // ignora skeletons/msgs
     var titleEl = card.querySelector('.card__title');
@@ -2566,15 +2816,23 @@
       // Pode ser undefined (filme/série sem poster); a tabela aceita null.
       posterPath: card.dataset.posterPath || null,
     });
-  });
-
-  $grid.addEventListener('keydown', function (event) {
+  }
+  function onCardKeydown(event) {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     var card = event.target.closest('.card');
     if (!card || !card.dataset.id) return;
     event.preventDefault();
     card.click();
-  });
+  }
+  $grid.addEventListener('click', onCardClick);
+  $grid.addEventListener('keydown', onCardKeydown);
+
+  // FASE 6.3 — mesma delegação no rail "Minha Lista" (cards têm o mesmo markup).
+  var $myListRail = document.getElementById('my-list');
+  if ($myListRail) {
+    $myListRail.addEventListener('click', onCardClick);
+    $myListRail.addEventListener('keydown', onCardKeydown);
+  }
 
   /* ===== 6.1 Search wiring (Fase 3) ==================================== */
 
@@ -2785,4 +3043,11 @@
   loadGenres();          // chips em paralelo (não bloqueia o grid)
   loadFirstPage();       // primeira página do Trending
   smokeTestSupabase();   // FASE 6.1 — valida conectividade (não bloqueia)
+  MyList.init();         // FASE 6.3 — busca favoritos em paralelo (não bloqueia)
+
+  // FASE 6.3 — expõe pra debug no DevTools (mesmo padrão do Supabase
+  // client da Fase 6.1). Não usado pelo app em runtime.
+  window.YverFlix = window.YverFlix || {};
+  window.YverFlix.Favorites = Favorites;
+  window.YverFlix.MyList = MyList;
 })();
