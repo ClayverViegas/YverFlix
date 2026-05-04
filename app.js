@@ -120,9 +120,14 @@
    * possam usá-lo direto.
    *
    * Decisões:
-   *  - `auth.persistSession: false` — ainda não usamos auth (só leitura
-   *    pública). Quando entrarmos em login, viramos pra true.
-   *  - `auth.autoRefreshToken: false` — idem.
+   *  - `auth.persistSession: true` (FASE 7.1) — guarda o JWT no
+   *    localStorage. F5 reenvia INITIAL_SESSION com a sessão recuperada,
+   *    o usuário fica logado entre reloads e tabs.
+   *  - `auth.autoRefreshToken: true` — refresha o JWT antes do expiry
+   *    automaticamente (sem isso, expiraria silenciosamente em ~1h).
+   *  - `auth.detectSessionInUrl: true` — pra fluxos de OAuth/magic-link
+   *    (callback redireciona com #access_token na URL). Default true,
+   *    mas explícito pra clareza.
    *  - Exposto em `window.YverFlix.supabase` (não polui `window` direto)
    *    pra facilitar debug no DevTools sem expor uma variável solta.
    *  - Guard pro caso do CDN não ter carregado (fallback gracioso: app
@@ -135,8 +140,9 @@
       SUPABASE_CONFIG.PUBLISHABLE_KEY,
       {
         auth: {
-          persistSession: false,
-          autoRefreshToken: false,
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
         },
       }
     );
@@ -1740,12 +1746,39 @@
    *   - Cacheia o `id` (PK) ao carregar status → DELETE futuro filtra
    *     direto pelo id (faster do que pelo composto).
    */
+  /* ----------------------- 4.4.0 Session helper (FASE 7.1) -------------- */
+
+  /**
+   * FASE 7.1 — Sessão atual + identificação do usuário "ativo" para
+   * persistência (tabela `favorites`).
+   *
+   * Por que um helper centralizado:
+   *   - ANTES (Fase 6.x): const USER_ID hardcoded em vários pontos.
+   *   - AGORA: cada chamada que escreve/lê do banco usa getCurrentUserId(),
+   *     que devolve o session.user.id REAL quando logado, ou um fallback
+   *     'user_teste_123' quando deslogado (pra manter compat com testes
+   *     legados sem auth — favoritos anônimos seguem funcionando).
+   *   - Próxima fase (7.2): trocar `USING (true)` por `auth.uid() = user_id`
+   *     no RLS, e remover o fallback (anônimo deixa de favoritar).
+   *
+   * `currentSession` é populada pelo handler de `onAuthStateChange`. Antes
+   * dele rodar (boot inicial), permanece null e o getter usa o fallback.
+   */
+  var FALLBACK_USER_ID = 'user_teste_123';
+  var currentSession = null;
+
+  function getCurrentUserId() {
+    if (currentSession && currentSession.user && currentSession.user.id) {
+      return currentSession.user.id;
+    }
+    return FALLBACK_USER_ID;
+  }
+
+  function isLoggedIn() {
+    return !!(currentSession && currentSession.user);
+  }
+
   var Favorites = (function () {
-    /*
-     * FASE 6.3 — fica fácil trocar por auth.user.id depois.
-     * Exposto via getUserId() pro módulo MyList consumir.
-     */
-    var USER_ID = 'user_teste_123';
     var $btn = document.getElementById('modal-fav');
 
     /**
@@ -1823,7 +1856,7 @@
       supa
         .from('favorites')
         .select('id')
-        .eq('user_id', USER_ID)
+        .eq('user_id', getCurrentUserId())
         .eq('tmdb_id', item.tmdbId)
         .eq('media_type', item.mediaType)
         .maybeSingle()
@@ -1933,7 +1966,7 @@
       return getClient()
         .from('favorites')
         .insert({
-          user_id: USER_ID,
+          user_id: getCurrentUserId(),
           tmdb_id: item.tmdbId,
           media_type: item.mediaType,
           title: item.title || null,
@@ -1950,7 +1983,7 @@
         return q.eq('id', currentRowId);
       }
       return q
-        .eq('user_id', USER_ID)
+        .eq('user_id', getCurrentUserId())
         .eq('tmdb_id', item.tmdbId)
         .eq('media_type', item.mediaType);
     }
@@ -1996,7 +2029,7 @@
       return supa
         .from('favorites')
         .select('id, user_id, tmdb_id, media_type, title, poster_path')
-        .eq('user_id', USER_ID)
+        .eq('user_id', getCurrentUserId())
         .order('id', { ascending: false })
         .then(function (res) {
           if (res.error) {
@@ -2007,7 +2040,7 @@
         });
     }
 
-    function getUserId() { return USER_ID; }
+    function getUserId() { return getCurrentUserId(); }
 
     return {
       attach: attach,
@@ -2055,6 +2088,18 @@
      * @type {Object<string, HTMLElement>}
      */
     var byKey = Object.create(null);
+
+    /**
+     * FASE 7.1 — Mesmo padrão do `latestReqId` no Favorites: contador
+     * monotônico que invalida resultados de fetches obsoletos.
+     *
+     * Cenário: F5 com sessão persistida → init() dispara fetch com
+     * fallback `user_teste_123` (currentSession ainda null). Logo após,
+     * INITIAL_SESSION chega → reload() limpa DOM e dispara fetch do
+     * user real. Sem versionamento, o `.then()` lento do init() chega
+     * DEPOIS e injeta favoritos do user errado mascarando os corretos.
+     */
+    var loadGen = 0;
 
     function key(mediaType, tmdbId) {
       return mediaType + ':' + tmdbId;
@@ -2106,8 +2151,16 @@
       // que o fetch inicial falhe.
       window.addEventListener('yverflix:favorites-changed', onChanged);
 
+      var myGen = ++loadGen;
       Favorites.list()
         .then(function (rows) {
+          // Last-write-wins: descarta resposta se reload() já
+          // disparou um fetch novo (login persistido chegando via
+          // INITIAL_SESSION durante init).
+          if (myGen !== loadGen) {
+            console.log('[MyList] init() obsoleto (gen', myGen, '!=', loadGen, ') — descartado.');
+            return;
+          }
           if (!rows.length) {
             // Só esconde se NENHUM card foi adicionado por addOne()
             // durante o fetch (race: insert chega depois do snapshot
@@ -2145,6 +2198,7 @@
           console.log('[MyList] carregada com', rows.length, 'favorito(s).');
         })
         .catch(function (err) {
+          if (myGen !== loadGen) return;     // resposta obsoleta
           // Falha aqui não derruba o app — só esconde a seção SE
           // nenhum card já tiver sido adicionado por addOne() durante
           // o fetch (mesma race do branch !rows.length acima).
@@ -2201,7 +2255,69 @@
       if (!$list.children.length) hide();
     }
 
-    return { init: init };
+    /**
+     * FASE 7.1 — Limpa estado e refaz o fetch. Chamado quando o usuário
+     * muda (login/logout) — o userId atrás do `getCurrentUserId()` mudou,
+     * então a lista anterior está obsoleta.
+     *
+     * Não usa init() pra evitar registrar o listener de novo (já registrado
+     * no boot). Apenas:
+     *   1. Remove todos os cards do trilho
+     *   2. Limpa byKey
+     *   3. Esconde a section (vai re-mostrar se rows > 0)
+     *   4. Re-fetcha com o novo USER_ID
+     */
+    function reload() {
+      // Bumpar gen ANTES de limpar — qualquer fetch in-flight (incluindo
+      // o disparado pelo init()) tem seu .then() invalidado.
+      var myGen = ++loadGen;
+
+      // Unobserve imgs antes de limpar pra liberar referências do observer
+      var imgs = $list.querySelectorAll('img');
+      for (var i = 0; i < imgs.length; i++) imageObserver.unobserve(imgs[i]);
+
+      $list.replaceChildren();
+      // Reseta o byKey preservando a referência (closure dependente).
+      // `Object.keys` em null-prototype object funciona normalmente.
+      var keys = Object.keys(byKey);
+      for (var k = 0; k < keys.length; k++) delete byKey[keys[k]];
+      hide();
+
+      Favorites.list()
+        .then(function (rows) {
+          if (myGen !== loadGen) return;     // outro reload mais novo já rolou
+          if (!rows.length) {
+            if (!$list.children.length) hide();
+            return;
+          }
+          var frag = document.createDocumentFragment();
+          var allLazy = [];
+          for (var i = 0; i < rows.length; i++) {
+            var item = rowToItem(rows[i]);
+            var dupKey = key(item.type, item.tmdbId);
+            if (byKey[dupKey]) continue;
+            var built = buildCardElement(item);
+            byKey[dupKey] = built.article;
+            frag.appendChild(built.fragment);
+            for (var j = 0; j < built.lazyImgs.length; j++) {
+              allLazy.push(built.lazyImgs[j]);
+            }
+          }
+          $list.appendChild(frag);
+          for (var k = 0; k < allLazy.length; k++) {
+            imageObserver.observe(allLazy[k]);
+          }
+          show();
+          console.log('[MyList] recarregada com', rows.length, 'favorito(s) do novo user.');
+        })
+        .catch(function (err) {
+          if (myGen !== loadGen) return;
+          console.warn('[MyList] reload falhou:', err);
+          if (!$list.children.length) hide();
+        });
+    }
+
+    return { init: init, reload: reload };
   })();
 
   /* ----------------------- 5. Content Modal (Fase 6) -------------------- */
@@ -3042,6 +3158,362 @@
     }
   }
 
+  /* ----------------------- 9. Auth (FASE 7.1) --------------------------- */
+
+  /**
+   * FASE 7.1 — Auth Email/Senha via Supabase Auth.
+   *
+   * Decisões de segurança e UX:
+   *
+   * 1. **Validação client-side dupla** — regex de email + comprimento >= 8.
+   *    NÃO substitui validação server-side (Supabase tem suas próprias
+   *    regras), mas evita request inúteis e dá feedback instantâneo.
+   *
+   * 2. **`disabled` durante request** — atributo HTML real (não só CSS).
+   *    Defesa em profundidade: o submit do form e clicks no botão são
+   *    bloqueados pelo browser. O flag `submitting` no closure é segunda
+   *    linha (caso o disabled seja burlado via DevTools).
+   *
+   * 3. **Rate-limit (429) tratado explicitamente** — Supabase retorna
+   *    `error.status === 429` ou message contendo "rate limit". Mostro
+   *    banner amarelo ("aguarde alguns segundos") em vez de erro vermelho
+   *    genérico. Mantém o submit disabled por 10s como cooldown extra,
+   *    pra não dar pro usuário insistir e bater de novo no rate-limit.
+   *
+   * 4. **Erros mapeados** — códigos comuns (Invalid login, User already
+   *    registered, Email not confirmed) viram mensagens em PT-BR amigáveis.
+   *
+   * 5. **Tabs Login/Signup compartilham form** — sem re-mount do DOM.
+   *    Toggle só muda label do submit + autocomplete + handler interno.
+   *
+   * 6. **NÃO loga senha em console** mesmo em erro. O Supabase também
+   *    não retorna a senha em payload de erro, mas reforço aqui.
+   */
+  var Auth = (function () {
+    var $modal     = document.getElementById('auth-modal');
+    var $form      = document.getElementById('auth-form');
+    var $tabLogin  = document.getElementById('auth-tab-login');
+    var $tabSignup = document.getElementById('auth-tab-signup');
+    var $title     = document.getElementById('auth-modal-title');
+    var $email     = document.getElementById('auth-email');
+    var $password  = document.getElementById('auth-password');
+    var $emailErr  = document.getElementById('auth-email-error');
+    var $passErr   = document.getElementById('auth-password-error');
+    var $banner    = document.getElementById('auth-banner');
+    var $submit    = document.getElementById('auth-submit');
+    var $submitLbl = document.getElementById('auth-submit-label');
+
+    var $headerWrap   = document.getElementById('auth-header');
+    var $loginBtn     = document.getElementById('auth-login-btn');
+    var $userWrap     = document.getElementById('auth-header-user');
+    var $userEmail    = document.getElementById('auth-header-email');
+    var $logoutBtn    = document.getElementById('auth-logout-btn');
+
+    /** Modo atual: 'login' ou 'signup'. */
+    var mode = 'login';
+
+    /** Flag que bloqueia submit duplo enquanto request em voo. */
+    var submitting = false;
+
+    /** Cooldown ID (rate-limit) — clearable se o usuário fechar o modal. */
+    var rateLimitTimer = null;
+
+    /* ---- Validação client-side ---------------------------------------- */
+
+    var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    var PASSWORD_MIN = 8;
+
+    function isEmailValid(v) {
+      return EMAIL_RE.test(String(v || '').trim());
+    }
+    function isPasswordValid(v) {
+      return String(v || '').length >= PASSWORD_MIN;
+    }
+
+    function validate() {
+      var emailOk = isEmailValid($email.value);
+      var passOk  = isPasswordValid($password.value);
+      $submit.disabled = !(emailOk && passOk) || submitting;
+      return { emailOk: emailOk, passOk: passOk, ok: emailOk && passOk };
+    }
+
+    function showFieldError($input, $err, msg) {
+      $input.parentElement.classList.add('auth-field--invalid');
+      $err.textContent = msg;
+      $err.hidden = false;
+    }
+    function clearFieldError($input, $err) {
+      $input.parentElement.classList.remove('auth-field--invalid');
+      $err.textContent = '';
+      $err.hidden = true;
+    }
+    function clearAllErrors() {
+      clearFieldError($email, $emailErr);
+      clearFieldError($password, $passErr);
+      hideBanner();
+    }
+
+    /* ---- Banner top-level (rate-limit / erros gerais) ------------------ */
+
+    function showBanner(msg, kind) {
+      $banner.textContent = msg;
+      $banner.className = 'auth-modal__banner auth-modal__banner--' + (kind || 'error');
+      $banner.hidden = false;
+    }
+    function hideBanner() {
+      $banner.hidden = true;
+      $banner.textContent = '';
+      $banner.className = 'auth-modal__banner';
+    }
+
+    /* ---- Tab toggle ---------------------------------------------------- */
+
+    function setMode(next) {
+      mode = next === 'signup' ? 'signup' : 'login';
+      $tabLogin.classList.toggle('auth-modal__tab--active', mode === 'login');
+      $tabSignup.classList.toggle('auth-modal__tab--active', mode === 'signup');
+      $tabLogin.setAttribute('aria-selected', mode === 'login' ? 'true' : 'false');
+      $tabSignup.setAttribute('aria-selected', mode === 'signup' ? 'true' : 'false');
+      $title.textContent = mode === 'signup' ? 'Criar sua conta' : 'Entrar na sua conta';
+      $submitLbl.textContent = mode === 'signup' ? 'Criar conta' : 'Entrar';
+      // autocomplete hint pra password manager:
+      $password.setAttribute(
+        'autocomplete',
+        mode === 'signup' ? 'new-password' : 'current-password'
+      );
+      clearAllErrors();
+      validate();
+    }
+
+    /* ---- Open / Close ------------------------------------------------- */
+
+    function open() {
+      $modal.hidden = false;
+      // Pequeno delay pra evitar conflito com focus do botão "Entrar"
+      // que abriu o modal (acessibilidade — focus trap simples).
+      setTimeout(function () { $email.focus(); }, 50);
+      document.addEventListener('keydown', onKeyDown);
+    }
+
+    function close() {
+      $modal.hidden = true;
+      $form.reset();
+      clearAllErrors();
+      setLoading(false);
+      if (rateLimitTimer) {
+        clearTimeout(rateLimitTimer);
+        rateLimitTimer = null;
+      }
+      submitting = false;
+      $submit.disabled = true;
+      document.removeEventListener('keydown', onKeyDown);
+    }
+
+    function onKeyDown(e) {
+      if (e.key === 'Escape') close();
+    }
+
+    /* ---- Loading state ------------------------------------------------- */
+
+    function setLoading(loading) {
+      submitting = !!loading;
+      $submit.classList.toggle('auth-modal__submit--loading', !!loading);
+      // Inputs também vão pra disabled durante a request — UX consistente
+      // (não dá pra editar o email enquanto a senha tá sendo verificada).
+      $email.disabled    = !!loading;
+      $password.disabled = !!loading;
+      // submit fica disabled por loading OU validação inválida — re-evalua
+      validate();
+    }
+
+    /* ---- Mapeamento de erros do Supabase ------------------------------- */
+
+    function isRateLimitError(err) {
+      if (!err) return false;
+      if (err.status === 429) return true;
+      var msg = String(err.message || '').toLowerCase();
+      return msg.indexOf('rate limit') >= 0 ||
+             msg.indexOf('too many requests') >= 0;
+    }
+
+    function friendlyError(err) {
+      if (!err) return 'Erro desconhecido. Tente de novo.';
+      var msg = String(err.message || '').toLowerCase();
+      if (isRateLimitError(err)) {
+        return 'Muitas tentativas. Aguarde alguns segundos e tente de novo.';
+      }
+      if (msg.indexOf('invalid login') >= 0 ||
+          msg.indexOf('invalid credentials') >= 0) {
+        return 'Email ou senha incorretos.';
+      }
+      if (msg.indexOf('user already registered') >= 0 ||
+          msg.indexOf('already been registered') >= 0) {
+        return 'Esse email já tem conta. Tente fazer login.';
+      }
+      if (msg.indexOf('email not confirmed') >= 0) {
+        return 'Confirme seu email antes de entrar (verifique a caixa de entrada).';
+      }
+      if (msg.indexOf('password') >= 0 && msg.indexOf('weak') >= 0) {
+        return 'Senha muito fraca. Use no mínimo 8 caracteres.';
+      }
+      if (msg.indexOf('network') >= 0 || msg.indexOf('failed to fetch') >= 0) {
+        return 'Sem conexão com o servidor. Confira sua internet.';
+      }
+      // Fallback — mostra mensagem original do Supabase (já em PT em alguns casos)
+      return err.message || 'Algo deu errado. Tente de novo.';
+    }
+
+    /* ---- Submit -------------------------------------------------------- */
+
+    function onSubmit(e) {
+      e.preventDefault();
+      if (submitting) return;          // bloqueio duplo (defesa em profundidade)
+
+      clearAllErrors();
+      var v = validate();
+
+      if (!v.emailOk) {
+        showFieldError($email, $emailErr, 'Formato de email inválido.');
+      }
+      if (!v.passOk) {
+        showFieldError(
+          $password, $passErr,
+          'Senha precisa ter pelo menos ' + PASSWORD_MIN + ' caracteres.'
+        );
+      }
+      if (!v.ok) return;
+
+      var supa = (window.YverFlix && window.YverFlix.supabase) || null;
+      if (!supa) {
+        showBanner('Cliente Supabase indisponível. Recarregue a página.', 'error');
+        return;
+      }
+
+      var email = String($email.value).trim();
+      var password = String($password.value);
+
+      setLoading(true);
+
+      var op = mode === 'signup'
+        ? supa.auth.signUp({ email: email, password: password })
+        : supa.auth.signInWithPassword({ email: email, password: password });
+
+      op
+        .then(function (res) {
+          if (res.error) return handleAuthError(res.error);
+
+          // Sucesso. SIGNED_IN dispara via onAuthStateChange e fecha o
+          // modal. Aqui só tratamos signup com email_confirmed=null,
+          // que NÃO dispara SIGNED_IN automaticamente.
+          if (mode === 'signup' && res.data && res.data.user &&
+              !res.data.session) {
+            // Confirmação por email habilitada no projeto → dá feedback
+            // pro usuário verificar a caixa de entrada.
+            setLoading(false);
+            showBanner(
+              'Conta criada! Verifique seu email pra confirmar antes de entrar.',
+              'success'
+            );
+          }
+          // Se vier session, onAuthStateChange já vai disparar e
+          // o handler central fecha o modal + atualiza header.
+        })
+        .catch(function (err) {
+          handleAuthError(err);
+        });
+    }
+
+    function handleAuthError(err) {
+      console.warn('[Auth]', mode, 'erro:', err && err.message);
+      setLoading(false);
+      var msg = friendlyError(err);
+
+      if (isRateLimitError(err)) {
+        showBanner(msg, 'warn');
+        // Cooldown de 10s — desabilita submit pra não bater de novo
+        // imediatamente (o servidor já vai recusar mesmo, mas evitamos
+        // mais 1 round-trip + log).
+        $submit.disabled = true;
+        rateLimitTimer = setTimeout(function () {
+          rateLimitTimer = null;
+          validate();        // re-habilita se inputs continuam válidos
+        }, 10000);
+      } else {
+        showBanner(msg, 'error');
+      }
+    }
+
+    /* ---- Logout -------------------------------------------------------- */
+
+    function signOut() {
+      var supa = (window.YverFlix && window.YverFlix.supabase) || null;
+      if (!supa) return;
+      $logoutBtn.disabled = true;     // race protection
+      supa.auth.signOut()
+        .then(function (res) {
+          if (res && res.error) {
+            console.error('[Auth] signOut erro:', res.error);
+          }
+        })
+        .catch(function (err) { console.error('[Auth] signOut catch:', err); })
+        .finally(function () {
+          $logoutBtn.disabled = false;
+        });
+    }
+
+    /* ---- Header UI sync ------------------------------------------------ */
+
+    function updateHeaderUI(session) {
+      $headerWrap.hidden = false;
+      if (session && session.user) {
+        $loginBtn.hidden = true;
+        $userWrap.hidden = false;
+        $userEmail.textContent = session.user.email || '';
+      } else {
+        $loginBtn.hidden = false;
+        $userWrap.hidden = true;
+        $userEmail.textContent = '';
+      }
+    }
+
+    /* ---- Wire-up ------------------------------------------------------- */
+
+    function bind() {
+      $tabLogin.addEventListener('click',  function () { setMode('login');  });
+      $tabSignup.addEventListener('click', function () { setMode('signup'); });
+
+      $email.addEventListener('input',    function () {
+        clearFieldError($email, $emailErr);
+        validate();
+      });
+      $password.addEventListener('input', function () {
+        clearFieldError($password, $passErr);
+        validate();
+      });
+
+      $form.addEventListener('submit', onSubmit);
+
+      // Fechar modal: backdrop, X, ESC. Tudo via data-auth-close.
+      $modal.addEventListener('click', function (e) {
+        var t = e.target;
+        if (t && t.matches && t.matches('[data-auth-close]')) close();
+      });
+
+      $loginBtn.addEventListener('click',  open);
+      $logoutBtn.addEventListener('click', signOut);
+
+      validate();
+    }
+
+    return {
+      bind: bind,
+      open: open,
+      close: close,
+      updateHeaderUI: updateHeaderUI,
+      signOut: signOut,
+    };
+  })();
+
   /* ===== Cleanup ao descartar a página ================================= */
 
   window.addEventListener('pagehide', function () {
@@ -3057,10 +3529,57 @@
   loadFirstPage();       // primeira página do Trending
   smokeTestSupabase();   // FASE 6.1 — valida conectividade (não bloqueia)
   MyList.init();         // FASE 6.3 — busca favoritos em paralelo (não bloqueia)
+  Auth.bind();           // FASE 7.1 — wire-up dos handlers do auth modal
+
+  /**
+   * FASE 7.1 — onAuthStateChange é o ÚNICO ponto que sincroniza state
+   * de sessão. Eventos:
+   *   - INITIAL_SESSION: dispara no boot, com session = sessão recuperada
+   *     do localStorage (ou null se nunca logou).
+   *   - SIGNED_IN: signUp/signInWithPassword bem-sucedido.
+   *   - SIGNED_OUT: signOut() bem-sucedido OU JWT expirado.
+   *   - TOKEN_REFRESHED: refresh automático do JWT (não muda user).
+   *   - USER_UPDATED: mudou senha/email pelo update().
+   *
+   * O handler é IDEMPOTENTE — mesmo state aplicado várias vezes não causa
+   * efeitos colaterais. Garante consistência entre tabs (BroadcastChannel
+   * do Supabase JS replica eventos pra outras abas abertas).
+   */
+  if (supabaseClient) {
+    supabaseClient.auth.onAuthStateChange(function (event, session) {
+      console.log('[Auth] event:', event, 'user:', session && session.user && session.user.email);
+
+      var prevUserId = currentSession && currentSession.user && currentSession.user.id;
+      var nextUserId = session && session.user && session.user.id;
+
+      currentSession = session || null;
+
+      // Atualiza header SEMPRE (idempotente)
+      Auth.updateHeaderUI(session);
+
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' ||
+          event === 'INITIAL_SESSION') {
+        // Fecha modal de auth se ele estava aberto (login bem-sucedido)
+        if (event === 'SIGNED_IN') Auth.close();
+
+        // Se o usuário ATIVO mudou (login, logout, ou troca de conta),
+        // recarrega a Minha Lista com os favoritos do user correto.
+        // Em INITIAL_SESSION com null (sem login persistido) NÃO precisa
+        // — o init() do MyList já rodou com o fallback user_teste_123.
+        // Mas se INITIAL_SESSION trouxe sessão (F5 com login persistido),
+        // precisa recarregar pq o init() rodou ANTES desse handler.
+        if (prevUserId !== nextUserId) {
+          MyList.reload();
+        }
+      }
+    });
+  }
 
   // FASE 6.3 — expõe pra debug no DevTools (mesmo padrão do Supabase
   // client da Fase 6.1). Não usado pelo app em runtime.
   window.YverFlix = window.YverFlix || {};
   window.YverFlix.Favorites = Favorites;
   window.YverFlix.MyList = MyList;
+  window.YverFlix.Auth = Auth;
+  window.YverFlix.getCurrentUserId = getCurrentUserId;
 })();
