@@ -61,6 +61,35 @@
                 aria-label="Limpar busca"
                 hidden>×</button>
       </form>
+
+      <!--
+        FASE 7.1 — Auth do header.
+        Estado controlado pelo JS via onAuthStateChange:
+          - Deslogado: mostra "Entrar" (botão accent que abre o modal)
+          - Logado:    mostra "<email curto> ▾" + dropdown com "Sair"
+
+        Hidden até o cliente Supabase carregar (evita flash de "Entrar"
+        seguido por "user@email.com" quando a sessão persistida no
+        localStorage chega via INITIAL_SESSION).
+      -->
+      <div class="auth-header" id="auth-header" hidden>
+        <button type="button"
+                class="auth-header__btn auth-header__btn--login"
+                id="auth-login-btn"
+                hidden>
+          Entrar
+        </button>
+
+        <div class="auth-header__user" id="auth-header-user" hidden>
+          <span class="auth-header__email" id="auth-header-email"></span>
+          <button type="button"
+                  class="auth-header__btn auth-header__btn--logout"
+                  id="auth-logout-btn"
+                  aria-label="Sair da conta">
+            Sair
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -276,6 +305,103 @@
           </div>
         </section>
       </div>
+    </div>
+  </div>
+
+  <!--
+    FASE 7.1 — Modal de autenticação (Email/Senha).
+    Inputs com type=email/password (browser valida basics + autofill).
+    Tabs Login/Criar Conta compartilham o MESMO form pra reduzir markup.
+    `aria-modal=true` + role=dialog + focus trap pelo JS.
+
+    Acessibilidade:
+      - aria-labelledby aponta pro título dinâmico
+      - role=alert na área de erro (anuncia screen reader na hora)
+      - autocomplete=email / current-password / new-password
+        (gerenciador de senha pega o hint correto por aba)
+  -->
+  <div class="auth-modal" id="auth-modal" hidden
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="auth-modal-title">
+    <div class="auth-modal__backdrop" data-auth-close></div>
+
+    <div class="auth-modal__content" role="document">
+      <button type="button"
+              class="auth-modal__close"
+              data-auth-close
+              aria-label="Fechar (ESC)">
+        <span aria-hidden="true">×</span>
+      </button>
+
+      <div class="auth-modal__tabs" role="tablist" aria-label="Modo de autenticação">
+        <button type="button"
+                role="tab"
+                class="auth-modal__tab auth-modal__tab--active"
+                id="auth-tab-login"
+                aria-selected="true"
+                data-auth-mode="login">
+          Login
+        </button>
+        <button type="button"
+                role="tab"
+                class="auth-modal__tab"
+                id="auth-tab-signup"
+                aria-selected="false"
+                data-auth-mode="signup">
+          Criar Conta
+        </button>
+      </div>
+
+      <h2 class="auth-modal__title" id="auth-modal-title">Entrar na sua conta</h2>
+
+      <!--
+        novalidate: desligo a UI nativa do browser pra controlar mensagens
+        de erro de forma consistente. Ainda usamos `type=email/password`
+        pra o autofill funcionar.
+      -->
+      <form class="auth-modal__form" id="auth-form" novalidate>
+        <div class="auth-field">
+          <label for="auth-email" class="auth-field__label">Email</label>
+          <input type="email"
+                 id="auth-email"
+                 class="auth-field__input"
+                 name="email"
+                 autocomplete="email"
+                 spellcheck="false"
+                 required
+                 aria-describedby="auth-email-error" />
+          <p class="auth-field__error" id="auth-email-error" role="alert" hidden></p>
+        </div>
+
+        <div class="auth-field">
+          <label for="auth-password" class="auth-field__label">Senha</label>
+          <input type="password"
+                 id="auth-password"
+                 class="auth-field__input"
+                 name="password"
+                 autocomplete="current-password"
+                 minlength="8"
+                 required
+                 aria-describedby="auth-password-error auth-password-hint" />
+          <p class="auth-field__hint" id="auth-password-hint">Mínimo 8 caracteres.</p>
+          <p class="auth-field__error" id="auth-password-error" role="alert" hidden></p>
+        </div>
+
+        <!--
+          Banner de erro top-level (network / Supabase). role=alert pra
+          tts; class de severidade (rate-limit é amarelo, resto é red).
+        -->
+        <div class="auth-modal__banner" id="auth-banner" role="alert" hidden></div>
+
+        <button type="submit"
+                class="auth-modal__submit"
+                id="auth-submit"
+                disabled>
+          <span class="auth-modal__submit-label" id="auth-submit-label">Entrar</span>
+          <span class="auth-modal__submit-spinner" aria-hidden="true"></span>
+        </button>
+      </form>
     </div>
   </div>
 

@@ -1427,3 +1427,306 @@ body {
 @media (max-width: 640px) {
   .rail .card { flex-basis: 140px; }
 }
+
+/* ============================================================
+   FASE 7.1 — Auth (header button + modal de login/signup).
+   ============================================================
+   Decisões:
+   - Botão do header é compacto (não compete com a busca).
+   - Modal usa o mesmo padrão visual do ContentModal (backdrop
+     escuro + card centralizado + border-radius generoso).
+   - Estados de erro/loading têm cores distintas (red pra fail,
+     amarelo pra rate-limit).
+   - Submit `disabled` quando inválido OU em request — visual e
+     atributo HTML (pra screen readers + bloqueio nativo).
+*/
+
+/* ---- Botão de auth no topbar ----------------------------------------- */
+
+/*
+ * `display: flex` (e mais abaixo no .auth-header__user) sobrescreve o
+ * `display: none` que o browser aplica via atributo [hidden]. Por isso
+ * preciso de uma regra explícita pra `[hidden]` ganhar de volta — caso
+ * contrário ambos "Entrar" e "Sair" aparecem ao mesmo tempo.
+ */
+.auth-header[hidden],
+.auth-header__user[hidden],
+.auth-header__btn[hidden] { display: none !important; }
+
+.auth-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.auth-header__btn {
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter .15s, transform .15s;
+  font-family: inherit;
+}
+.auth-header__btn:hover { filter: brightness(1.08); }
+.auth-header__btn:active { transform: scale(.97); }
+.auth-header__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.auth-header__btn--logout {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  padding: 7px 14px;
+  font-weight: 500;
+}
+.auth-header__btn--logout:hover {
+  color: var(--fg);
+  border-color: var(--fg-dim);
+}
+
+.auth-header__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-header__email {
+  color: var(--fg-dim);
+  font-size: .85rem;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .auth-header__email { display: none; }  /* só botão Sair em mobile */
+}
+
+/* ---- Modal de auth --------------------------------------------------- */
+
+.auth-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;             /* acima do ContentModal (z 1000) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.auth-modal[hidden] { display: none; }
+
+.auth-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 6, 8, .85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.auth-modal__content {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px 28px 24px;
+  box-shadow: 0 24px 48px rgba(0,0,0,.5);
+  animation: auth-modal-in .2s ease-out;
+}
+
+@keyframes auth-modal-in {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);   }
+}
+
+.auth-modal__close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 0;
+  color: var(--fg-dim);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background .15s, color .15s;
+}
+.auth-modal__close:hover {
+  background: rgba(255,255,255,.06);
+  color: var(--fg);
+}
+
+/* ---- Tabs (Login / Criar Conta) -------------------------------------- */
+
+.auth-modal__tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: rgba(255,255,255,.04);
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.auth-modal__tab {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  padding: 8px 14px;
+  font-size: .9rem;
+  font-weight: 500;
+  color: var(--fg-dim);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background .15s, color .15s;
+  font-family: inherit;
+}
+.auth-modal__tab:hover { color: var(--fg); }
+.auth-modal__tab--active {
+  background: var(--bg);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.auth-modal__title {
+  margin: 0 0 18px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+/* ---- Form fields ----------------------------------------------------- */
+
+.auth-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-field { display: flex; flex-direction: column; gap: 6px; }
+
+.auth-field__label {
+  font-size: .82rem;
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+
+.auth-field__input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--fg);
+  font-size: .95rem;
+  font-family: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.auth-field__input:focus {
+  outline: 0;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(229, 9, 20, .15);
+}
+.auth-field__input:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.auth-field__hint {
+  margin: 0;
+  font-size: .75rem;
+  color: var(--fg-mute);
+}
+
+.auth-field__error {
+  margin: 0;
+  font-size: .78rem;
+  color: #ff6b6b;
+}
+
+/* Estado de erro: borda vermelha no input */
+.auth-field--invalid .auth-field__input {
+  border-color: #ff6b6b;
+  box-shadow: 0 0 0 3px rgba(255, 107, 107, .12);
+}
+
+/* ---- Banner top-level (rate-limit / network) ------------------------- */
+
+.auth-modal__banner {
+  margin: 4px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: .82rem;
+  line-height: 1.4;
+}
+.auth-modal__banner--error {
+  background: rgba(255, 107, 107, .1);
+  border: 1px solid rgba(255, 107, 107, .3);
+  color: #ff8a8a;
+}
+.auth-modal__banner--warn {
+  /* rate-limit: amarelo distinto do "erro de credencial" */
+  background: rgba(255, 193, 7, .08);
+  border: 1px solid rgba(255, 193, 7, .3);
+  color: #ffd864;
+}
+.auth-modal__banner--success {
+  background: rgba(46, 204, 113, .08);
+  border: 1px solid rgba(46, 204, 113, .3);
+  color: #6ee7a8;
+}
+
+/* ---- Submit ---------------------------------------------------------- */
+
+.auth-modal__submit {
+  position: relative;
+  margin-top: 6px;
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 11px 16px;
+  font-size: .95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter .15s, opacity .15s;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 42px;
+}
+.auth-modal__submit:hover:not(:disabled) { filter: brightness(1.08); }
+.auth-modal__submit:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.auth-modal__submit-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: auth-spin .7s linear infinite;
+  display: none;
+}
+.auth-modal__submit--loading .auth-modal__submit-spinner { display: inline-block; }
+
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 480px) {
+  .auth-modal__content { padding: 24px 20px 18px; }
+  .auth-modal__title   { font-size: 1.15rem; }
+}
