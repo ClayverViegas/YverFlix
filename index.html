@@ -166,8 +166,53 @@
       </header>
 
       <div class="modal__body" id="player-mount">
-        <!-- iframe injetado dinamicamente -->
+        <!-- iframe injetado dinamicamente pelo PlayerModal -->
       </div>
+
+      <!--
+        Painel de séries (FASE 5).
+        Só fica visível quando mediaType === 'tv'. Para filmes, o
+        atributo `hidden` permanece e o painel não consome layout.
+
+        Estrutura:
+          .episodes              → wrapper (hidden por default)
+          .episodes__head        → label + <select> de temporadas
+          .episodes__loading     → spinner inline (só durante fetch)
+          #episodes-list         → <ul role="listbox"> de episódios
+
+        POR QUÊ um <select> nativo em vez de dropdown custom:
+          1) acessibilidade out-of-the-box (teclado, leitores de tela);
+          2) zero JS p/ abrir/fechar — performance + simplicidade;
+          3) estilizado com `appearance: none` + chevron SVG inline.
+      -->
+      <aside id="episodes-panel" class="episodes" hidden
+             aria-label="Temporadas e episódios">
+        <header class="episodes__head">
+          <label class="episodes__label" for="season-select">Temporada</label>
+          <div class="episodes__select-wrap">
+            <select id="season-select"
+                    class="episodes__select"
+                    aria-controls="episodes-list">
+              <!-- options populadas dinamicamente por SeriesEpisodes -->
+            </select>
+            <span class="episodes__chevron" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                   stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6"></path>
+              </svg>
+            </span>
+          </div>
+        </header>
+
+        <div class="episodes__loading" hidden role="status" aria-live="polite">
+          <span class="spinner spinner--sm" aria-hidden="true"></span>
+          <span>Carregando episódios…</span>
+        </div>
+
+        <ul id="episodes-list" class="episodes__list"
+            role="listbox" aria-label="Episódios" aria-busy="false"></ul>
+      </aside>
     </div>
   </div>
 
