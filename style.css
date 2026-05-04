@@ -1375,3 +1375,55 @@ body {
 @media (max-width: 640px) {
   .modal__fav { width: 36px; height: 36px; margin-right: 4px; }
 }
+
+/* ============================================================ */
+/*  FASE 6.3 — Minha Lista (rail horizontal)                    */
+/* ============================================================ */
+/*
+ * Carrossel horizontal scrollável.
+ * Reusa o mesmo .card do grid (Fase 1) — apenas o container muda.
+ * Decisões:
+ *   - flex em vez de grid → cards mantêm largura fixa e o overflow-x
+ *     vira o "trilho" do scroll. Grid forçaria wrap.
+ *   - scroll-snap-type: x mandatory → cada flick gruda no início do
+ *     próximo card. UX mobile e desktop.
+ *   - scrollbar custom discreta (igual ao .episodes da Fase 6).
+ */
+.section--rail .section__head { margin-bottom: 14px; }
+
+.rail {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* scroll-snap só ativa no toque/wheel — drag-scroll continua livre. */
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  /* Compensar o glow/shadow dos cards no início e fim do trilho. */
+  padding: 4px 4px 14px 4px;
+  /* Permite que o accent-glow do card "vaze" verticalmente. */
+  margin: 0 -4px;
+}
+
+.rail::-webkit-scrollbar { height: 8px; }
+.rail::-webkit-scrollbar-track { background: transparent; }
+.rail::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+.rail::-webkit-scrollbar-thumb:hover { background: var(--fg-mute); }
+
+.rail .card {
+  /*
+   * Largura fixa pra virar "carrossel". Mesmo aspect que o grid,
+   * só que sem o auto-fill responsivo.
+   */
+  flex: 0 0 168px;
+  scroll-snap-align: start;
+}
+
+@media (max-width: 640px) {
+  .rail .card { flex-basis: 140px; }
+}

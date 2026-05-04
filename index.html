@@ -78,6 +78,30 @@
   </nav>
 
   <main id="catalog" class="page">
+    <!--
+      FASE 6.3 — "Minha Lista".
+      Carrossel horizontal acima do Trending, com os favoritos do usuário.
+
+      A section começa hidden e o JS revela quando há ao menos 1 favorito
+      (requisito: estado vazio = display:none pra UI ficar limpa).
+
+      O conteúdo é mantido reativo via CustomEvent('yverflix:favorites-changed')
+      disparado pelo módulo Favorites no toggle. O MyList aplica patches
+      incrementais (insertBefore / element.remove) — sem re-render do site.
+    -->
+    <section id="my-list-section"
+             class="section section--rail"
+             aria-labelledby="my-list-title"
+             hidden>
+      <div class="section__head">
+        <h2 id="my-list-title" class="section__title">Minha Lista</h2>
+        <p class="section__sub">Os títulos que você favoritou</p>
+      </div>
+
+      <div id="my-list" class="rail" role="list"
+           aria-label="Itens favoritados"></div>
+    </section>
+
     <section aria-labelledby="trending-title" class="section">
       <div class="section__head">
         <h2 id="trending-title" class="section__title">Em alta nesta semana</h2>
