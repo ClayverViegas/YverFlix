@@ -135,84 +135,90 @@
   </template>
 
   <!--
-    Modal do player (Fase 2).
+    Modal de Conteúdo (FASE 6 — refatorado).
 
-    Estrutura:
-      .modal             → camada full-screen (display:none por CSS quando fechada)
-      .modal__backdrop   → fundo blur; clique nele fecha (data-modal-close)
-      .modal__panel      → container central com header + body
-      .modal__close      → botão "Fechar" sempre visível
-      #player-mount      → onde o <iframe> é INJETADO dinamicamente pelo JS
+    Tem DUAS views alternáveis sem fechar o modal:
+      .modal__view--details : hero + sinopse + elenco + episódios/play
+      .modal__view--player  : iframe (criado lazy ao acionar play)
 
-    O <iframe> NÃO existe neste HTML — é criado em PlayerModal.open()
-    e completamente removido em PlayerModal.close() (corta áudio/banda).
+    A view ativa é controlada pela classe no #player-modal:
+      .modal--view-details (default)  → details visível, player hidden
+      .modal--view-player              → player visível, details hidden
 
-    aria-hidden="true" inicial; o JS alterna para "false" quando abre.
+    O <iframe> NÃO está aqui — é criado dinamicamente quando o usuário
+    clica em "Assistir agora" ou em um episódio (REQUISITO 5 — gatilho
+    de play). Voltar para details destrói o iframe (libera banda).
+
+    Botão de Voltar (.modal__back) só aparece quando view === 'player'.
   -->
-  <div id="player-modal" class="modal" role="dialog"
+  <div id="player-modal" class="modal modal--view-details" role="dialog"
        aria-modal="true" aria-hidden="true"
        aria-labelledby="player-title">
     <div class="modal__backdrop" data-modal-close aria-hidden="true"></div>
 
     <div class="modal__panel" role="document">
       <header class="modal__header">
-        <h2 id="player-title" class="modal__title">Player</h2>
+        <!--
+          Botão Voltar (FASE 6).
+          - Hidden por default; o JS revela quando view === 'player'.
+          - Click → volta pra view 'details' SEM fechar o modal.
+        -->
+        <button type="button"
+                class="modal__back"
+                id="modal-back"
+                hidden
+                aria-label="Voltar para os detalhes">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+               stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="m15 18-6-6 6-6"></path>
+          </svg>
+          <span>Voltar</span>
+        </button>
+
+        <h2 id="player-title" class="modal__title">Detalhes</h2>
+
         <button type="button"
                 class="modal__close"
                 data-modal-close
-                aria-label="Fechar player (ESC)">
+                aria-label="Fechar (ESC)">
           <span aria-hidden="true">×</span>
         </button>
       </header>
 
-      <div class="modal__body" id="player-mount">
-        <!-- iframe injetado dinamicamente pelo PlayerModal -->
-      </div>
-
-      <!--
-        Painel de séries (FASE 5).
-        Só fica visível quando mediaType === 'tv'. Para filmes, o
-        atributo `hidden` permanece e o painel não consome layout.
-
-        Estrutura:
-          .episodes              → wrapper (hidden por default)
-          .episodes__head        → label + <select> de temporadas
-          .episodes__loading     → spinner inline (só durante fetch)
-          #episodes-list         → <ul role="listbox"> de episódios
-
-        POR QUÊ um <select> nativo em vez de dropdown custom:
-          1) acessibilidade out-of-the-box (teclado, leitores de tela);
-          2) zero JS p/ abrir/fechar — performance + simplicidade;
-          3) estilizado com `appearance: none` + chevron SVG inline.
-      -->
-      <aside id="episodes-panel" class="episodes" hidden
-             aria-label="Temporadas e episódios">
-        <header class="episodes__head">
-          <label class="episodes__label" for="season-select">Temporada</label>
-          <div class="episodes__select-wrap">
-            <select id="season-select"
-                    class="episodes__select"
-                    aria-controls="episodes-list">
-              <!-- options populadas dinamicamente por SeriesEpisodes -->
-            </select>
-            <span class="episodes__chevron" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
-                   stroke="currentColor" stroke-width="2"
-                   stroke-linecap="round" stroke-linejoin="round">
-                <path d="m6 9 6 6 6-6"></path>
-              </svg>
-            </span>
+      <div class="modal__views">
+        <!--
+          VIEW 1 — Detalhes Imersivos (default ao abrir).
+          Conteúdo (hero + cast + episodes/watch) é populado pelo JS em
+          DetailsView.mount(). O wrapper #details-content recebe o DOM.
+        -->
+        <section id="details-view"
+                 class="modal__view modal__view--details"
+                 aria-label="Detalhes do conteúdo">
+          <div id="details-loading" class="modal__loading"
+               role="status" aria-live="polite" hidden>
+            <span class="spinner" aria-hidden="true"></span>
+            <p>Carregando detalhes…</p>
           </div>
-        </header>
+          <div id="details-content" class="details">
+            <!-- hero + info + cast + episodes/watch injetados pelo JS -->
+          </div>
+        </section>
 
-        <div class="episodes__loading" hidden role="status" aria-live="polite">
-          <span class="spinner spinner--sm" aria-hidden="true"></span>
-          <span>Carregando episódios…</span>
-        </div>
-
-        <ul id="episodes-list" class="episodes__list"
-            role="listbox" aria-label="Episódios" aria-busy="false"></ul>
-      </aside>
+        <!--
+          VIEW 2 — Player.
+          iframe injetado em #player-mount somente quando o usuário
+          aciona play. Sair desta view destrói o iframe (corta banda).
+        -->
+        <section id="player-view"
+                 class="modal__view modal__view--player"
+                 aria-label="Player de vídeo"
+                 hidden>
+          <div class="modal__body" id="player-mount">
+            <!-- iframe sandbox criado em ContentModal.enterPlayer() -->
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 

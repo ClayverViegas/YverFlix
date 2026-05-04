@@ -83,6 +83,9 @@
     TMDB_BASE_URL: 'https://api.themoviedb.org/3',
     TMDB_IMG_BASE: 'https://image.tmdb.org/t/p',
     POSTER_SIZE: 'w342',          // ~342x513px — ideal para cards do grid
+    BACKDROP_SIZE: 'w1280',       // FASE 6 — hero backdrop (acima da dobra)
+    STILL_SIZE: 'w300',           // FASE 6 — thumbnails dos episódios
+    PROFILE_SIZE: 'w185',         // FASE 6 — fotos do elenco
     LANGUAGE: 'pt-BR',
     REGION: 'BR',
     TIMEOUT_MS: 8000,             // 8s: balanço entre rede ruim e UX
@@ -90,6 +93,7 @@
     RETRY_DELAY_MS: 600,
     SKELETON_COUNT: 12,
     LAZY_ROOT_MARGIN: '200px',    // pré-carrega imgs 200px antes da viewport
+    CAST_LIMIT: 12,               // FASE 6 — máx. atores no carrossel
   });
 
   /* ----------------------- 2. Camada HTTP ------------------------------- */
@@ -376,8 +380,125 @@
       return {
         number: e.episode_number,
         name: e.name || ('Episódio ' + e.episode_number),
+        // FASE 6 — campos visuais
+        overview: e.overview || '',
+        runtime: e.runtime || 0,
+        stillUrl: e.still_path
+          ? CONFIG.TMDB_IMG_BASE + '/' + CONFIG.STILL_SIZE + e.still_path
+          : null,
+        airDate: e.air_date || '',
       };
     });
+  }
+
+  /*
+   * FASE 6 — Detalhes completos para a tela de "imersivo".
+   * Endpoint: /movie/{id} ou /tv/{id}.
+   * Retorna o que é necessário pro hero (backdrop, runtime, géneros,
+   * tagline, sinopse completa, ano, classificação, status).
+   */
+  async function getDetails(mediaType, id, signal) {
+    assertApiKey();
+    var path = mediaType === 'movie' ? '/movie/' : '/tv/';
+    var url = new URL(CONFIG.TMDB_BASE_URL + path + encodeURIComponent(id));
+    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
+    url.searchParams.set('language', CONFIG.LANGUAGE);
+    // append_to_response: classificação etária na MESMA request (uma rede só).
+    url.searchParams.set(
+      'append_to_response',
+      mediaType === 'movie' ? 'release_dates' : 'content_ratings'
+    );
+
+    var response = await fetchWithTimeout(url.toString(), { signal: signal });
+    var data = await response.json();
+
+    var isMovie = mediaType === 'movie';
+    return {
+      tmdbId: data.id,
+      type: mediaType,
+      title: isMovie ? data.title : data.name,
+      originalTitle: isMovie ? data.original_title : data.original_name,
+      overview: data.overview || '',
+      tagline: data.tagline || '',
+      backdropUrl: data.backdrop_path
+        ? CONFIG.TMDB_IMG_BASE + '/' + CONFIG.BACKDROP_SIZE + data.backdrop_path
+        : null,
+      posterUrl: data.poster_path
+        ? CONFIG.TMDB_IMG_BASE + '/' + CONFIG.POSTER_SIZE + data.poster_path
+        : null,
+      releaseDate: (isMovie ? data.release_date : data.first_air_date) || '',
+      voteAverage: typeof data.vote_average === 'number' ? data.vote_average : 0,
+      runtime: isMovie
+        ? (data.runtime || 0)
+        : ((data.episode_run_time && data.episode_run_time[0]) || 0),
+      genres: (data.genres || []).map(function (g) { return g.name; }),
+      status: data.status || '',
+      // Apenas para tv:
+      numberOfSeasons: data.number_of_seasons || 0,
+      numberOfEpisodes: data.number_of_episodes || 0,
+      seasons: (data.seasons || []).filter(function (s) {
+        return typeof s.season_number === 'number';
+      }).map(function (s) {
+        return {
+          season_number: s.season_number,
+          name: s.name || '',
+          episode_count: s.episode_count || 0,
+        };
+      }),
+      // Classificação (BR > US > primeiro disponível).
+      certification: extractCertification(data, isMovie),
+    };
+  }
+
+  /*
+   * Extrai a classificação etária (rating) priorizando BR e fazendo fallback
+   * para US, depois para o primeiro disponível. Funciona para movie e tv.
+   */
+  function extractCertification(data, isMovie) {
+    if (isMovie) {
+      var rd = data.release_dates && data.release_dates.results;
+      if (!rd || !rd.length) return '';
+      var pick = rd.find(function (r) { return r.iso_3166_1 === 'BR'; })
+              || rd.find(function (r) { return r.iso_3166_1 === 'US'; })
+              || rd[0];
+      var entries = (pick && pick.release_dates) || [];
+      var found = entries.find(function (e) { return e.certification; });
+      return found ? found.certification : '';
+    }
+    var cr = data.content_ratings && data.content_ratings.results;
+    if (!cr || !cr.length) return '';
+    var pickTv = cr.find(function (r) { return r.iso_3166_1 === 'BR'; })
+              || cr.find(function (r) { return r.iso_3166_1 === 'US'; })
+              || cr[0];
+    return (pickTv && pickTv.rating) || '';
+  }
+
+  /*
+   * FASE 6 — Créditos (elenco). Retorna no máx. CAST_LIMIT atores
+   * principais com foto. POR QUÊ limitar: o JSON pode trazer 50+ pessoas
+   * — pesa download e renderização. Limitamos no client após receber.
+   */
+  async function getCredits(mediaType, id, signal) {
+    assertApiKey();
+    var path = mediaType === 'movie' ? '/movie/' : '/tv/';
+    var url = new URL(CONFIG.TMDB_BASE_URL + path + encodeURIComponent(id) + '/credits');
+    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
+    url.searchParams.set('language', CONFIG.LANGUAGE);
+
+    var response = await fetchWithTimeout(url.toString(), { signal: signal });
+    var data = await response.json();
+    return (data.cast || [])
+      .slice(0, CONFIG.CAST_LIMIT)
+      .map(function (p) {
+        return {
+          id: p.id,
+          name: p.name || '',
+          character: p.character || '',
+          photoUrl: p.profile_path
+            ? CONFIG.TMDB_IMG_BASE + '/' + CONFIG.PROFILE_SIZE + p.profile_path
+            : null,
+        };
+      });
   }
 
   function assertApiKey() {
@@ -637,7 +758,7 @@
    *
    *   SeriesEpisodes.destroy()
    *     - aborta requests pendentes, limpa listeners e esconde o painel.
-   *     - chamado no close() do PlayerModal.
+   *     - chamado no close() do ContentModal.
    *
    * DECISÕES DE PERFORMANCE:
    *   1) `cache` é um Object.create(null) NO ESCOPO DO IIFE — preservado
@@ -657,13 +778,17 @@
     'use strict';
 
     /*
-     * Shape do cache:
+     * FASE 5 + 6 — cache de séries.
+     * Shape:
      *   cache[tmdbId] = {
      *     detailsLoaded: bool,
      *     totalSeasons:  number,
      *     seasons:       [{ season_number, name, episode_count }],
-     *     episodes:      { [seasonNumber]: [{ number, name }] }
+     *     episodes:      { [seasonNumber]: [{ number, name, stillUrl, runtime, overview }] }
      *   }
+     *
+     * O cache vive no closure do IIFE — preservado entre aberturas do modal
+     * (REQUISITO 4 da Fase 5: re-acessar T1 já carregada = ZERO fetch).
      */
     var cache = Object.create(null);
 
@@ -682,20 +807,33 @@
       return cache[tmdbId];
     }
 
+    /*
+     * FASE 6 — Mount ganha a responsabilidade de CONSTRUIR seu próprio DOM
+     * dentro do $container (em vez de esperar um markup pré-existente).
+     * Isto desacopla SeriesEpisodes da estrutura do index.html — pode ser
+     * inserido em qualquer lugar (atualmente DetailsView usa).
+     *
+     * @param {Object} item       { tmdbId, mediaType, title }
+     * @param {Element} $container onde os elementos serão renderizados
+     * @param {Function} onPlay   callback (season, episode) ao clicar ep
+     */
     function mount(item, $container, onPlay) {
       // Guarda contra mount duplicado: se já existe, destrói antes.
       destroy();
+
+      // Constrói o DOM (header com select + loading + grid de cards).
+      buildContainerDOM($container);
 
       var c = {
         tmdbId: item.tmdbId,
         controller: new AbortController(),
         $container: $container,
-        $select: $container.querySelector('#season-select'),
-        $loading: $container.querySelector('.episodes__loading'),
-        $list: $container.querySelector('#episodes-list'),
+        $select:   $container.querySelector('.episodes__select'),
+        $loading:  $container.querySelector('.episodes-section__loading'),
+        $list:     $container.querySelector('.episodes-grid'),
         onPlay: onPlay,
         currentSeason: 1,
-        currentEpisode: 1,
+        currentEpisode: null,  // FASE 6 — nenhum episódio começa "playing"
       };
       current = c;
 
@@ -798,14 +936,14 @@
     }
 
     function onEpisodeClick(event) {
-      var li = event.target.closest('.episodes__item');
+      var li = event.target.closest('.ep-card');
       if (!li || !current.$list.contains(li)) return;
       activateEpisode(Number(li.dataset.season), Number(li.dataset.episode));
     }
 
     function onEpisodeKeydown(event) {
       if (event.key !== 'Enter' && event.key !== ' ') return;
-      var li = event.target.closest('.episodes__item');
+      var li = event.target.closest('.ep-card');
       if (!li) return;
       event.preventDefault();
       activateEpisode(Number(li.dataset.season), Number(li.dataset.episode));
@@ -817,14 +955,14 @@
       current.currentEpisode = episode;
 
       // Marca o item ATIVO sem regerar a lista (zero re-render).
-      var items = current.$list.querySelectorAll('.episodes__item');
+      var items = current.$list.querySelectorAll('.ep-card');
       Array.prototype.forEach.call(items, function (it) {
         var match = Number(it.dataset.season) === season && Number(it.dataset.episode) === episode;
-        it.classList.toggle('episodes__item--active', match);
+        it.classList.toggle('ep-card--active', match);
         it.setAttribute('aria-selected', match ? 'true' : 'false');
       });
 
-      // Notifica o PlayerModal (ele atualiza o iframe.src).
+      // Notifica o ContentModal (ele cria o iframe + entra na view player).
       if (typeof current.onPlay === 'function') current.onPlay(season, episode);
     }
 
@@ -863,6 +1001,18 @@
       }
     }
 
+    /*
+     * FASE 6 — Render VISUAL com thumbnail, título, runtime e overview.
+     * Substitui a lista textual da Fase 5 por cards horizontais.
+     *
+     * Decisões de performance:
+     *   - DocumentFragment p/ 1 reflow só.
+     *   - <img loading="lazy"> nativo: thumbs fora da viewport não baixam.
+     *   - decoding="async" → não bloqueia o main thread.
+     *   - .is-loaded (fade-in) controlado por listener `load` por imagem
+     *     (registro pontual; remove sozinho com {once: true}).
+     *   - contain: layout style (no CSS) isola reflow por card.
+     */
     function renderEpisodes(episodes, activeEpisode) {
       var $list = current.$list;
       $list.replaceChildren();
@@ -875,36 +1025,98 @@
         return;
       }
 
-      // DocumentFragment → 1 único reflow (perf decisão 4).
       var fragment = document.createDocumentFragment();
       episodes.forEach(function (ep) {
-        var li = document.createElement('li');
-        li.className = 'episodes__item';
-        li.setAttribute('role', 'option');
-        li.tabIndex = 0;
-        li.dataset.season = String(current.currentSeason);
-        li.dataset.episode = String(ep.number);
-
-        var isActive = activeEpisode && ep.number === activeEpisode;
-        if (isActive) li.classList.add('episodes__item--active');
-        li.setAttribute('aria-selected', isActive ? 'true' : 'false');
-
-        var num = document.createElement('span');
-        num.className = 'episodes__num';
-        // Formato "E01 - Pilot" (REQUISITO de UI).
-        var n = ep.number;
-        num.textContent = 'E' + (n < 10 ? '0' + n : n);
-
-        var title = document.createElement('span');
-        title.className = 'episodes__title';
-        // textContent → safe contra XSS no nome do episódio.
-        title.textContent = ep.name;
-
-        li.appendChild(num);
-        li.appendChild(title);
-        fragment.appendChild(li);
+        fragment.appendChild(buildEpisodeCard(ep, activeEpisode));
       });
       $list.appendChild(fragment);
+    }
+
+    function buildEpisodeCard(ep, activeEpisode) {
+      var li = document.createElement('li');
+      li.className = 'ep-card';
+      li.setAttribute('role', 'option');
+      li.tabIndex = 0;
+      li.dataset.season = String(current.currentSeason);
+      li.dataset.episode = String(ep.number);
+
+      var isActive = activeEpisode && ep.number === activeEpisode;
+      if (isActive) li.classList.add('ep-card--active');
+      li.setAttribute('aria-selected', isActive ? 'true' : 'false');
+
+      // ---- Thumb (16:9 com still_path do TMDB).
+      var thumb = document.createElement('div');
+      thumb.className = 'ep-card__thumb';
+
+      if (ep.stillUrl) {
+        var img = document.createElement('img');
+        img.className = 'ep-card__thumb-img';
+        img.src = ep.stillUrl;
+        img.alt = '';                  // decorativo (título já está ao lado)
+        img.loading = 'lazy';          // lazy native
+        img.decoding = 'async';
+        // Fade-in só após o load (perf: evita flash branco).
+        img.addEventListener('load', function () {
+          img.classList.add('is-loaded');
+        }, { once: true });
+        // Se a imagem falha, mantém o fundo escuro do thumb (graceful).
+        img.addEventListener('error', function () {
+          img.style.display = 'none';
+        }, { once: true });
+        thumb.appendChild(img);
+      } else {
+        var ph = document.createElement('div');
+        ph.className = 'ep-card__thumb-placeholder';
+        ph.textContent = '🎬';
+        thumb.appendChild(ph);
+      }
+
+      // Número do episódio sobreposto.
+      var n = ep.number;
+      var num = document.createElement('span');
+      num.className = 'ep-card__num';
+      num.textContent = 'E' + (n < 10 ? '0' + n : n);
+      thumb.appendChild(num);
+
+      // Overlay de play (aparece no hover via CSS).
+      var overlay = document.createElement('div');
+      overlay.className = 'ep-card__play-overlay';
+      overlay.setAttribute('aria-hidden', 'true');
+      overlay.textContent = '▶';
+      thumb.appendChild(overlay);
+
+      li.appendChild(thumb);
+
+      // ---- Info à direita.
+      var info = document.createElement('div');
+      info.className = 'ep-card__info';
+
+      var title = document.createElement('h4');
+      title.className = 'ep-card__title';
+      title.textContent = ep.name;
+      info.appendChild(title);
+
+      // Meta: runtime + air_date (só aparece se tem dados).
+      if (ep.runtime || ep.airDate) {
+        var meta = document.createElement('div');
+        meta.className = 'ep-card__meta';
+        var bits = [];
+        if (ep.runtime) bits.push(ep.runtime + ' min');
+        if (ep.airDate) bits.push(formatYear(ep.airDate));
+        meta.textContent = bits.join(' · ');
+        info.appendChild(meta);
+      }
+
+      if (ep.overview) {
+        var ov = document.createElement('p');
+        ov.className = 'ep-card__overview';
+        ov.textContent = ep.overview;
+        info.appendChild(ov);
+      }
+
+      li.appendChild(info);
+
+      return li;
     }
 
     function renderListError() {
@@ -913,6 +1125,70 @@
       li.className = 'episodes__empty';
       li.textContent = 'Erro ao carregar episódios. Tente outra temporada.';
       current.$list.appendChild(li);
+    }
+
+    /*
+     * FASE 6 — Constrói o DOM interno do painel de episódios.
+     * Antes (Fase 5) o markup vinha de index.html; agora é dinâmico p/
+     * podermos reusar SeriesEpisodes em qualquer container.
+     */
+    function buildContainerDOM($container) {
+      $container.replaceChildren();
+
+      // Header com título + select de temporadas.
+      var head = document.createElement('header');
+      head.className = 'episodes-section__head';
+
+      var title = document.createElement('h3');
+      title.className = 'section-title';
+      title.textContent = 'Episódios';
+      head.appendChild(title);
+
+      var selectWrap = document.createElement('div');
+      selectWrap.className = 'episodes__select-wrap';
+
+      var select = document.createElement('select');
+      select.className = 'episodes__select';
+      select.setAttribute('aria-label', 'Selecionar temporada');
+      selectWrap.appendChild(select);
+
+      var chev = document.createElement('span');
+      chev.className = 'episodes__chevron';
+      chev.setAttribute('aria-hidden', 'true');
+      chev.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"' +
+        ' fill="none" stroke="currentColor" stroke-width="2"' +
+        ' stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>';
+      selectWrap.appendChild(chev);
+
+      head.appendChild(selectWrap);
+      $container.appendChild(head);
+
+      // Loading inline (visível apenas durante fetch da temporada).
+      var loading = document.createElement('div');
+      loading.className = 'episodes-section__loading';
+      loading.setAttribute('role', 'status');
+      loading.setAttribute('aria-live', 'polite');
+      loading.hidden = true;
+      var spinner = document.createElement('span');
+      spinner.className = 'spinner spinner--sm';
+      spinner.setAttribute('aria-hidden', 'true');
+      var lbl = document.createElement('span');
+      lbl.textContent = 'Carregando episódios…';
+      loading.appendChild(spinner);
+      loading.appendChild(lbl);
+      $container.appendChild(loading);
+
+      // Grid de cards.
+      var list = document.createElement('ul');
+      list.className = 'episodes-grid';
+      list.setAttribute('role', 'listbox');
+      list.setAttribute('aria-label', 'Episódios');
+      $container.appendChild(list);
+    }
+
+    function formatYear(dateStr) {
+      var m = /^(\d{4})/.exec(dateStr || '');
+      return m ? m[1] : '';
     }
 
     function showLoading() {
@@ -931,35 +1207,409 @@
       if (!current) return;
       // 1 abort() = remove todos os listeners + cancela requests pendentes.
       try { current.controller.abort(); } catch (e) { /* noop */ }
-      if (current.$container) current.$container.hidden = true;
-      if (current.$select)    current.$select.replaceChildren();
-      if (current.$list)      current.$list.replaceChildren();
-      if (current.$loading)   current.$loading.hidden = true;
+      // FASE 6 — limpa o DOM construído (DetailsView remove o container do
+      // details quando re-mounta, mas garantimos cleanup mesmo em outros
+      // pontos de saída).
+      if (current.$container) {
+        current.$container.replaceChildren();
+        current.$container.hidden = true;
+      }
       current = null;
     }
 
     return { mount: mount, destroy: destroy };
   })();
 
-  /* ----------------------- 5. Player Modal ------------------------------ */
+  /* ====================================================================
+     FASE 6 — DetailsView (página de detalhes imersivos dentro do modal)
+
+     Responsabilidades:
+       - Buscar /tv/{id} ou /movie/{id} (`getDetails`) + /credits em paralelo.
+       - Renderizar Hero (backdrop + título + meta + sinopse).
+       - Renderizar carrossel de elenco (lazy load nas fotos).
+       - Para tv: montar SeriesEpisodes; para movie: botão "Assistir agora".
+       - Notificar via `onPlay(season|null, episode|null)` para o
+         ContentModal abrir o player (se episode null → é um filme).
+
+     Cache:
+       - detailsCache + creditsCache vivem no closure.
+       - Reabrir o mesmo card é instantâneo (zero fetch).
+
+     Decisões de performance:
+       1) Promise.all paraleliza as 2 requests de mount inicial.
+       2) Backdrop é eager (acima da dobra); cast e thumbs são lazy.
+       3) Container do details é completamente limpo entre mounts (sem
+          leak de listeners — usamos AbortController).
+       4) Re-render quando o cache hit é hidratado SÍNCRONAMENTE.
+     ==================================================================== */
+  var DetailsView = (function () {
+    'use strict';
+
+    var detailsCache = Object.create(null);  // tmdbId -> details
+    var creditsCache = Object.create(null);  // tmdbId -> credits[]
+    var current = null;
+
+    /*
+     * @param {Object} item                { tmdbId, mediaType, title, ... }
+     * @param {Element} $root              container (#details-content)
+     * @param {Element} $loadingEl         overlay de loading do modal
+     * @param {Function} onPlay            callback (season, episode) — null/null para filme
+     */
+    function mount(item, $root, $loadingEl, onPlay) {
+      destroy();
+
+      current = {
+        tmdbId: item.tmdbId,
+        mediaType: item.mediaType,
+        controller: new AbortController(),
+        $root: $root,
+        $loading: $loadingEl,
+        $episodesContainer: null,
+        onPlay: onPlay,
+      };
+
+      // Cache hit total → render síncrono.
+      var cachedDetails = detailsCache[item.tmdbId];
+      var cachedCredits = creditsCache[item.tmdbId];
+
+      if (cachedDetails && cachedCredits) {
+        renderAll(cachedDetails, cachedCredits);
+        return;
+      }
+
+      // Caso contrário: mostra loading e dispara fetch paralelo.
+      showLoading();
+      loadAll(item, cachedDetails, cachedCredits);
+    }
+
+    async function loadAll(item, cachedDetails, cachedCredits) {
+      var c = current;
+      if (!c) return;
+      var sig = c.controller.signal;
+
+      try {
+        // Promise.all: 2 requests em PARALELO — TTI metade do sequencial.
+        var detailsPromise = cachedDetails
+          ? Promise.resolve(cachedDetails)
+          : getDetails(item.mediaType, item.tmdbId, sig).then(function (d) {
+              detailsCache[item.tmdbId] = d;
+              return d;
+            });
+
+        var creditsPromise = cachedCredits
+          ? Promise.resolve(cachedCredits)
+          : getCredits(item.mediaType, item.tmdbId, sig).then(function (c2) {
+              creditsCache[item.tmdbId] = c2;
+              return c2;
+            });
+
+        var results = await Promise.all([detailsPromise, creditsPromise]);
+
+        // Race guard: usuário pode ter trocado de card antes da resposta.
+        if (!current || current.tmdbId !== item.tmdbId) return;
+
+        renderAll(results[0], results[1]);
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        console.error('[Streaming MVP] Falha ao carregar detalhes:', err);
+        renderError();
+      } finally {
+        hideLoading();
+      }
+    }
+
+    /* ---- render principal ---- */
+
+    function renderAll(details, credits) {
+      var c = current;
+      if (!c) return;
+      hideLoading();
+
+      // Limpa qualquer render anterior (cache hit em re-mount).
+      c.$root.replaceChildren();
+
+      c.$root.appendChild(buildHero(details));
+      if (credits && credits.length) {
+        c.$root.appendChild(buildCastSection(credits));
+      }
+
+      // Ações específicas por tipo de mídia (REQUISITO 5 — gatilho de play).
+      if (details.type === 'tv') {
+        // Painel de episódios (com SeriesEpisodes, módulo da Fase 5).
+        var episodesSection = document.createElement('section');
+        episodesSection.className = 'episodes-section details-section';
+        c.$root.appendChild(episodesSection);
+        c.$episodesContainer = episodesSection;
+
+        SeriesEpisodes.mount(
+          { tmdbId: details.tmdbId, mediaType: 'tv', title: details.title },
+          episodesSection,
+          function (season, episode) {
+            if (typeof c.onPlay === 'function') c.onPlay(season, episode);
+          }
+        );
+      }
+      // Para movie, o "Assistir agora" já está no hero (botão).
+    }
+
+    /* ---- hero ---- */
+
+    function buildHero(d) {
+      var hero = document.createElement('section');
+      hero.className = 'hero';
+
+      // Backdrop como CSS variable inline (CSS aplica como background-image).
+      // POR QUÊ inline em vez de attribute: permite o gradiente CSS continuar
+      // controlado por classe e evita que reflows futuros refaçam parsing.
+      if (d.backdropUrl) {
+        hero.style.setProperty('--hero-bg', 'url(' + d.backdropUrl + ')');
+      }
+
+      var inner = document.createElement('div');
+      inner.className = 'hero__inner';
+
+      var h2 = document.createElement('h2');
+      h2.className = 'hero__title';
+      h2.textContent = d.title;
+      inner.appendChild(h2);
+
+      if (d.tagline) {
+        var tag = document.createElement('p');
+        tag.className = 'hero__tagline';
+        tag.textContent = d.tagline;
+        inner.appendChild(tag);
+      }
+
+      // Chips de meta: rating, ano, classificação, runtime/temporadas, gêneros.
+      var meta = document.createElement('div');
+      meta.className = 'hero__meta';
+
+      if (d.voteAverage) {
+        var rating = document.createElement('span');
+        rating.className = 'meta-chip meta-chip--rating';
+        rating.textContent = '★ ' + d.voteAverage.toFixed(1);
+        meta.appendChild(rating);
+      }
+
+      var year = formatYear(d.releaseDate);
+      if (year) meta.appendChild(makeChip(year));
+
+      if (d.certification) {
+        var cert = document.createElement('span');
+        cert.className = 'meta-chip meta-chip--cert';
+        cert.textContent = d.certification;
+        meta.appendChild(cert);
+      }
+
+      if (d.type === 'movie' && d.runtime) {
+        meta.appendChild(makeChip(d.runtime + ' min'));
+      } else if (d.type === 'tv' && d.numberOfSeasons) {
+        meta.appendChild(makeChip(
+          d.numberOfSeasons + (d.numberOfSeasons === 1 ? ' temporada' : ' temporadas')
+        ));
+      }
+
+      // Primeiros 3 gêneros (não polui o hero).
+      (d.genres || []).slice(0, 3).forEach(function (g) {
+        meta.appendChild(makeChip(g));
+      });
+
+      if (meta.children.length) inner.appendChild(meta);
+
+      // Sinopse completa.
+      if (d.overview) {
+        var ov = document.createElement('p');
+        ov.className = 'hero__overview';
+        ov.textContent = d.overview;
+        inner.appendChild(ov);
+      }
+
+      // Ações: para movie → "Assistir Agora" no hero. Para tv → user clica
+      // num episódio mais abaixo (decisão de UX: cada ep é o trigger).
+      if (d.type === 'movie') {
+        var actions = document.createElement('div');
+        actions.className = 'hero__actions';
+
+        var watch = document.createElement('button');
+        watch.type = 'button';
+        watch.className = 'btn btn--primary';
+        watch.innerHTML = '<span class="btn__icon" aria-hidden="true">▶</span>' +
+                          '<span>Assistir agora</span>';
+        watch.addEventListener('click', function () {
+          // null/null → ContentModal sabe que é movie.
+          if (current && typeof current.onPlay === 'function') current.onPlay(null, null);
+        });
+        actions.appendChild(watch);
+        inner.appendChild(actions);
+      }
+
+      hero.appendChild(inner);
+      return hero;
+    }
+
+    function makeChip(text) {
+      var chip = document.createElement('span');
+      chip.className = 'meta-chip';
+      chip.textContent = text;
+      return chip;
+    }
+
+    /* ---- cast ---- */
+
+    function buildCastSection(credits) {
+      var section = document.createElement('section');
+      section.className = 'details-section';
+
+      var title = document.createElement('h3');
+      title.className = 'section-title';
+      title.textContent = 'Elenco';
+      section.appendChild(title);
+
+      var carousel = document.createElement('ul');
+      carousel.className = 'cast-carousel';
+      carousel.setAttribute('role', 'list');
+
+      // DocumentFragment p/ 1 reflow só.
+      var fragment = document.createDocumentFragment();
+      credits.forEach(function (p) {
+        fragment.appendChild(buildCastItem(p));
+      });
+      carousel.appendChild(fragment);
+      section.appendChild(carousel);
+
+      return section;
+    }
+
+    function buildCastItem(p) {
+      var li = document.createElement('li');
+      li.className = 'cast-item';
+
+      var photoWrap = document.createElement('div');
+      photoWrap.className = 'cast-photo-wrap';
+
+      if (p.photoUrl) {
+        var img = document.createElement('img');
+        img.className = 'cast-photo';
+        img.src = p.photoUrl;
+        img.alt = p.name;
+        // Lazy + async decoding — REQUISITO Fase 6: lazy nas fotos do elenco.
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        img.addEventListener('load', function () {
+          img.classList.add('is-loaded');
+        }, { once: true });
+        img.addEventListener('error', function () {
+          // Fallback: substitui por placeholder.
+          img.replaceWith(buildCastPlaceholder(p.name));
+        }, { once: true });
+        photoWrap.appendChild(img);
+      } else {
+        photoWrap.appendChild(buildCastPlaceholder(p.name));
+      }
+
+      li.appendChild(photoWrap);
+
+      var name = document.createElement('p');
+      name.className = 'cast-name';
+      name.textContent = p.name;
+      li.appendChild(name);
+
+      if (p.character) {
+        var role = document.createElement('p');
+        role.className = 'cast-role';
+        role.textContent = p.character;
+        li.appendChild(role);
+      }
+
+      return li;
+    }
+
+    function buildCastPlaceholder(name) {
+      var ph = document.createElement('div');
+      ph.className = 'cast-photo--placeholder';
+      ph.setAttribute('aria-hidden', 'true');
+      // Iniciais do ator (até 2 letras).
+      var initials = (name || '?').trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map(function (w) { return (w[0] || '').toUpperCase(); })
+        .join('');
+      ph.textContent = initials || '?';
+      return ph;
+    }
+
+    /* ---- estados ---- */
+
+    function showLoading() {
+      if (current && current.$loading) current.$loading.hidden = false;
+    }
+
+    function hideLoading() {
+      if (current && current.$loading) current.$loading.hidden = true;
+    }
+
+    function renderError() {
+      if (!current) return;
+      hideLoading();
+      var c = current.$root;
+      c.replaceChildren();
+      var box = document.createElement('div');
+      box.className = 'modal__loading';
+      box.style.position = 'static';
+      box.innerHTML = '<p>Não foi possível carregar os detalhes. Tente novamente.</p>';
+      c.appendChild(box);
+    }
+
+    function destroy() {
+      if (!current) return;
+      try { current.controller.abort(); } catch (e) { /* noop */ }
+      // Garante cleanup do SeriesEpisodes (caso seja tv).
+      try { SeriesEpisodes.destroy(); } catch (e) { /* noop */ }
+      if (current.$root) current.$root.replaceChildren();
+      hideLoading();
+      current = null;
+    }
+
+    function formatYear(dateStr) {
+      var m = /^(\d{4})/.exec(dateStr || '');
+      return m ? m[1] : '';
+    }
+
+    return {
+      mount: mount,
+      destroy: destroy,
+    };
+  })();
+
+  /* ----------------------- 5. Content Modal (Fase 6) -------------------- */
 
   /**
-   * Módulo PlayerModal: abre um overlay com iframe injetado dinamicamente,
-   * fecha removendo o iframe COMPLETAMENTE do DOM (corta áudio e banda).
+   * FASE 6 — ContentModal.
    *
-   * Estado mantido em closure (encapsulado, não global):
-   *   - isOpen        : guard contra reentradas
-   *   - iframe        : referência do iframe quando aberto, null quando fechado
-   *   - currentItem   : item sendo reproduzido (p/ retry / abrir em nova aba)
-   *   - loadTimerId   : timer do timeout de carregamento (12s)
-   *   - cleanups      : AbortController que agrega TODOS os listeners de open()
-   *   - lastFocused   : elemento que tinha foco antes de abrir (restaurado no close)
+   * Refactor completo do PlayerModal da Fase 5:
+   *   - Modal agora tem 2 views: 'details' (default) e 'player'.
+   *   - Abrir um card → DetailsView.mount() → hero, elenco, episódios.
+   *   - Iframe NÃO é criado em open(). É criado apenas em enterPlayerView()
+   *     quando o usuário clica "Assistir Agora" (filme) ou um episódio.
+   *   - Botão "Voltar" alterna do player para details (destrói iframe →
+   *     libera banda imediatamente).
+   *   - Fechar o modal limpa tudo.
+   *
+   * Estado em closure:
+   *   - isOpen / view ('details' | 'player')
+   *   - iframe (criado em demand)
+   *   - currentItem / currentSeason / currentEpisode
+   *   - cleanups (AbortController de listeners do open)
    */
-  var PlayerModal = (function () {
+  var ContentModal = (function () {
     var $modal          = document.getElementById('player-modal');
     var $title          = document.getElementById('player-title');
+    var $back           = document.getElementById('modal-back');
+    var $detailsView    = document.getElementById('details-view');
+    var $detailsContent = document.getElementById('details-content');
+    var $detailsLoading = document.getElementById('details-loading');
+    var $playerView     = document.getElementById('player-view');
     var $mount          = document.getElementById('player-mount');
-    var $episodesPanel  = document.getElementById('episodes-panel');
     var $closeBtns      = $modal.querySelectorAll('[data-modal-close]');
 
     var IFRAME_LOAD_TIMEOUT_MS = 12000;
@@ -986,10 +1636,11 @@
 
     var state = {
       isOpen: false,
+      view: 'details',         // FASE 6 — 'details' | 'player'
       iframe: null,
       currentItem: null,
-      currentSeason: null,    // FASE 5 — temporada ATIVA (apenas tv)
-      currentEpisode: null,   // FASE 5 — episódio ATIVO (apenas tv)
+      currentSeason: null,
+      currentEpisode: null,
       loadTimerId: 0,
       cleanups: null,
       lastFocused: null,
@@ -1012,84 +1663,53 @@
     }
 
     /**
-     * Abre o modal com o player do item.
+     * Abre o modal com a view de DETALHES (não inicia o player ainda).
+     * Iframe será criado apenas quando o usuário clicar "Assistir Agora"
+     * (filme) ou um episódio (série).
+     *
      * @param {{ tmdbId: number, mediaType: 'movie'|'tv', title: string }} item
      */
     function open(item) {
-      // Reabre limpo se já estiver aberto (não acumular iframes).
       if (state.isOpen) close();
 
       state.isOpen = true;
+      state.view = 'details';
       state.currentItem = item;
+      state.currentSeason = null;
+      state.currentEpisode = null;
       state.lastFocused = document.activeElement;
 
-      // FASE 5 — para séries, default S1E1 (UX Netflix-like: o player já
-      // arranca tocando o piloto sem o usuário precisar clicar).
-      var isTv = item.mediaType === 'tv';
-      state.currentSeason  = isTv ? 1 : null;
-      state.currentEpisode = isTv ? 1 : null;
-
-      // AbortController: 1 abort() = todos os listeners desligados.
       state.cleanups = new AbortController();
       var sig = state.cleanups.signal;
 
-      // 1) Body scroll lock sem layout shift (compensa scrollbar).
+      // 1) Body scroll lock sem layout shift.
       var scrollbarW = window.innerWidth - document.documentElement.clientWidth;
       document.body.style.overflow = 'hidden';
       if (scrollbarW > 0) document.body.style.paddingRight = scrollbarW + 'px';
 
-      // 2) Header + classe modal--tv (CSS adapta layout para séries).
-      $title.textContent = item.title || 'Player';
-      $modal.classList.toggle('modal--tv', isTv);
-      renderLoadingState();
+      // 2) Header + classe da view ATUAL (CSS toggla qual section é visível).
+      $title.textContent = item.title || 'Detalhes';
+      applyViewClass('details');
 
-      // 3) Cria o iframe DINAMICAMENTE — não existe no HTML.
-      var iframe = document.createElement('iframe');
-      iframe.className = 'player__iframe';
-      iframe.title = 'Player de vídeo — ' + (item.title || 'mídia');
-      iframe.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
-      iframe.allowFullscreen = true;
-      iframe.referrerPolicy = 'no-referrer';
-
-      // FASE 5 — SANDBOX (BLOQUEIO DE ANÚNCIOS — REQUISITO 6).
-      // Sem allow-popups e sem allow-modals: redirects do Superflix são bloqueados.
-      iframe.setAttribute('sandbox', IFRAME_SANDBOX);
-
-      // 4) Listeners do iframe — agrupados no AbortController.
-      iframe.addEventListener('load', onIframeLoad, { signal: sig, once: true });
-      iframe.addEventListener('error', onIframeFail, { signal: sig, once: true });
-
-      // 5) Timeout de fallback: se 'load' não disparar em N seg, mostra erro.
-      state.loadTimerId = setTimeout(function () {
-        onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
-      }, IFRAME_LOAD_TIMEOUT_MS);
-
-      // 6) src é o ÚLTIMO passo — só agora a request começa.
-      iframe.src = buildPlayerUrl(item.mediaType, item.tmdbId,
-                                   state.currentSeason, state.currentEpisode);
-      state.iframe = iframe;
-
-      // 7) Anexa o iframe ao mount.
-      $mount.appendChild(iframe);
-
-      // 8) Mostra modal (CSS faz fade-in via transition).
+      // 3) Mostra modal.
       $modal.classList.add('modal--open');
       $modal.setAttribute('aria-hidden', 'false');
 
-      // 9) Listeners de fechamento — também agrupados no signal.
+      // 4) Listeners agrupados no signal — fecha modal + back + ESC.
       document.addEventListener('keydown', onKeydown, { signal: sig });
       Array.prototype.forEach.call($closeBtns, function (btn) {
         btn.addEventListener('click', close, { signal: sig });
       });
+      $back.addEventListener('click', enterDetailsView, { signal: sig });
 
-      // 10) FASE 5 — monta painel de Temporadas/Episódios (SOMENTE p/ tv).
-      //     onPlayEpisode é o callback que troca o src do iframe.
-      if (isTv && $episodesPanel && typeof SeriesEpisodes !== 'undefined') {
-        SeriesEpisodes.mount(item, $episodesPanel, onPlayEpisode);
-      }
+      // 5) FASE 6 — monta DetailsView. onPlay é o callback que entra no
+      //    player. Para filmes: (null, null) → cria iframe sem season/ep.
+      //    Para séries: (season, episode) → cria iframe com query params.
+      DetailsView.mount(item, $detailsContent, $detailsLoading, function (season, episode) {
+        enterPlayerView(season, episode);
+      });
 
-      // 11) Foco inicial no botão fechar (acessibilidade).
-      //     setTimeout 0 para garantir que o modal já está visível.
+      // 6) Foco inicial no botão fechar (acessibilidade).
       setTimeout(function () {
         var closeBtn = $modal.querySelector('.modal__close');
         if (closeBtn) closeBtn.focus();
@@ -1097,68 +1717,129 @@
     }
 
     /*
-     * FASE 5 — Callback chamado pelo SeriesEpisodes quando o usuário
-     * clica num episódio. Atualiza o src do iframe SEM destruí-lo
-     * (mantém o player montado, troca só a URL).
-     *
-     * POR QUÊ não recriar o iframe:
-     *   - Trocar src dispara um navigation (cheap), não um destroy/create.
-     *   - Mantém os listeners e o sandbox já configurados.
-     *   - Evita o flash de "Carregando player…" entre episódios.
+     * FASE 6 — Alterna para a view do player e cria o iframe.
+     * @param {number|null} season   null para filmes
+     * @param {number|null} episode  null para filmes
      */
-    function onPlayEpisode(seasonNumber, episodeNumber) {
-      if (!state.isOpen || !state.iframe || !state.currentItem) return;
-      state.currentSeason  = seasonNumber;
-      state.currentEpisode = episodeNumber;
-      var newUrl = buildPlayerUrl(
-        state.currentItem.mediaType,
-        state.currentItem.tmdbId,
-        seasonNumber,
-        episodeNumber
-      );
-      // Decisão de performance: trocar `src` direto é o caminho mais barato.
-      // O sandbox e listeners do iframe permanecem intactos.
-      try { state.iframe.src = newUrl; } catch (e) {
-        console.error('[Streaming MVP] Falha ao trocar episódio:', e);
-      }
+    function enterPlayerView(season, episode) {
+      if (!state.isOpen || !state.currentItem) return;
+
+      state.view = 'player';
+      state.currentSeason = season;
+      state.currentEpisode = episode;
+
+      applyViewClass('player');
+      renderLoadingState();
+      createIframe(state.currentItem, season, episode);
+
+      // Foco no botão Voltar (acessibilidade — user pode pressionar Enter
+      // pra voltar ou Esc pra fechar).
+      setTimeout(function () { try { $back.focus(); } catch (e) {} }, 0);
     }
 
-    /**
-     * Fecha o modal e libera TODOS os recursos.
-     * É a parte crítica: garantir zero memory leak e parada de banda/áudio.
+    /*
+     * FASE 6 — Volta para a view de detalhes. Destrói o iframe (libera
+     * banda imediatamente — comportamento equivalente ao close, exceto
+     * que o modal continua aberto).
      */
-    function close() {
+    function enterDetailsView() {
       if (!state.isOpen) return;
+      state.view = 'details';
+      destroyIframe();
+      applyViewClass('details');
+    }
 
-      // 1) Cancela timer + desliga TODOS os listeners de uma vez.
+    /*
+     * Aplica a classe de view ao modal + atualiza atributos hidden.
+     * Estratégia: ao usar classes E hidden ao mesmo tempo, garantimos
+     * que screen readers ignorem a view oculta (hidden = aria-hidden).
+     */
+    function applyViewClass(view) {
+      $modal.classList.toggle('modal--view-details', view === 'details');
+      $modal.classList.toggle('modal--view-player', view === 'player');
+      $detailsView.hidden = view !== 'details';
+      $playerView.hidden  = view !== 'player';
+      $back.hidden = view !== 'player';
+      // Título do header só faz sentido em details (em player aparece o back).
+      $title.textContent = view === 'details'
+        ? (state.currentItem ? state.currentItem.title : 'Detalhes')
+        : 'Player';
+    }
+
+    /*
+     * Cria o iframe sandbox e o anexa ao #player-mount.
+     * Toda a lógica de sandbox + timeout + load/error é igual à Fase 5.
+     */
+    function createIframe(item, season, episode) {
+      // Garante limpeza prévia (caso enterPlayerView seja chamado 2x).
+      destroyIframe();
+
+      var iframe = document.createElement('iframe');
+      iframe.className = 'player__iframe';
+      iframe.title = 'Player de vídeo — ' + (item.title || 'mídia');
+      iframe.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
+      iframe.allowFullscreen = true;
+      iframe.referrerPolicy = 'no-referrer';
+
+      // FASE 5 — SANDBOX (REQUISITO 6 — bloqueio de ads).
+      iframe.setAttribute('sandbox', IFRAME_SANDBOX);
+
+      // Listeners + timeout idênticos à Fase 5.
+      var sig = state.cleanups ? state.cleanups.signal : undefined;
+      iframe.addEventListener('load', onIframeLoad, { signal: sig, once: true });
+      iframe.addEventListener('error', onIframeFail, { signal: sig, once: true });
+
+      state.loadTimerId = setTimeout(function () {
+        onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
+      }, IFRAME_LOAD_TIMEOUT_MS);
+
+      iframe.src = buildPlayerUrl(item.mediaType, item.tmdbId, season, episode);
+      state.iframe = iframe;
+      $mount.appendChild(iframe);
+    }
+
+    /*
+     * Destroi o iframe e zera o mount. Equivalente ao bloco de cleanup
+     * do close() da Fase 5 — extraído pra ser reusado por enterDetailsView.
+     */
+    function destroyIframe() {
       if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
-      if (state.cleanups)    { state.cleanups.abort(); state.cleanups = null; }
-
-      // 1.5) FASE 5 — desmonta painel de séries (aborta requests e listeners).
-      if (typeof SeriesEpisodes !== 'undefined') SeriesEpisodes.destroy();
-      $modal.classList.remove('modal--tv');
-
-      // 2) Remove o iframe DE VERDADE.
-      //    src = 'about:blank' ANTES de removeChild — passo essencial:
-      //    no Chromium isso interrompe o pipeline de mídia e o download
-      //    do conteúdo. Sem isso, em algumas versões o iframe continua
-      //    consumindo banda/áudio por alguns segundos após sair do DOM.
       if (state.iframe) {
+        // src=about:blank antes do removeChild — corta pipeline de mídia.
         try { state.iframe.src = 'about:blank'; } catch (e) { /* noop */ }
         if (state.iframe.parentNode) state.iframe.parentNode.removeChild(state.iframe);
         state.iframe = null;
       }
-
-      // 3) Limpa qualquer placeholder/erro que tenha ficado no mount.
       $mount.replaceChildren();
+    }
 
-      // 4) Esconde modal e restaura body.
+    /**
+     * Fecha o modal e libera TODOS os recursos (iframe + DetailsView).
+     */
+    function close() {
+      if (!state.isOpen) return;
+
+      // 1) Desliga listeners + cancela requests + destrói iframe.
+      if (state.cleanups) { state.cleanups.abort(); state.cleanups = null; }
+      destroyIframe();
+
+      // 2) Cleanup do DetailsView (que cleanup-a SeriesEpisodes em cascata).
+      try { DetailsView.destroy(); } catch (e) { /* noop */ }
+
+      // 3) Reseta classes e estados visuais.
       $modal.classList.remove('modal--open');
+      $modal.classList.remove('modal--view-player');
+      $modal.classList.add('modal--view-details');
       $modal.setAttribute('aria-hidden', 'true');
+      $detailsView.hidden = false;
+      $playerView.hidden = true;
+      $back.hidden = true;
+
+      // 4) Restaura body scroll.
       document.body.style.overflow = '';
       document.body.style.paddingRight = '';
 
-      // 5) Restaura o foco no elemento anterior (acessibilidade).
+      // 5) Restaura o foco.
       if (state.lastFocused && typeof state.lastFocused.focus === 'function') {
         try { state.lastFocused.focus(); } catch (e) { /* noop */ }
       }
@@ -1166,6 +1847,7 @@
       state.currentItem = null;
       state.currentSeason = null;
       state.currentEpisode = null;
+      state.view = 'details';
       state.isOpen = false;
     }
 
@@ -1240,17 +1922,16 @@
       var actions = document.createElement('div');
       actions.className = 'player__error-actions';
 
-      // Botão 'Tentar novamente' — fecha+reabre com o mesmo item.
+      // Botão 'Tentar novamente' — recria o iframe SEM destruir details.
       var retry = document.createElement('button');
       retry.type = 'button';
       retry.className = 'grid__retry';
       retry.textContent = 'Tentar novamente';
       retry.addEventListener('click', function () {
-        var item = state.currentItem;
-        if (!item) return;
-        close();
-        // setTimeout 0 → reset visual completo entre close e novo open.
-        setTimeout(function () { open(item); }, 0);
+        if (!state.currentItem) return;
+        // Recria o iframe diretamente (mantém a view player ativa).
+        renderLoadingState();
+        createIframe(state.currentItem, state.currentSeason, state.currentEpisode);
       }, { signal: state.cleanups ? state.cleanups.signal : undefined });
 
       // Link 'Abrir em nova aba' — fallback definitivo.
@@ -1488,13 +2169,13 @@
     }
   }
 
-  /* ===== Click delegation no grid (cards → PlayerModal) ================ */
+  /* ===== Click delegation no grid (cards → ContentModal) =============== */
 
   $grid.addEventListener('click', function (event) {
     var card = event.target.closest('.card');
     if (!card || !card.dataset.id) return;       // ignora skeletons/msgs
     var titleEl = card.querySelector('.card__title');
-    PlayerModal.open({
+    ContentModal.open({
       tmdbId: Number(card.dataset.id),
       mediaType: card.dataset.mediaType,
       title: titleEl ? titleEl.textContent : '',
@@ -1710,7 +2391,7 @@
     if (currentController) currentController.abort();
     imageObserver.disconnect();
     sentinelObserver.disconnect();
-    PlayerModal.close();
+    ContentModal.close();
   }, { once: true });
 
   /* ===== Kick-off ====================================================== */

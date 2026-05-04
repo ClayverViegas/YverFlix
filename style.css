@@ -782,3 +782,506 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .episodes__item { transition: none; }
 }
+
+/* =====================================================================
+   FASE 6 — Detalhes Imersivos (estilo Primeflix/Netflix)
+
+   O modal agora tem 2 views (details + player). A details view tem
+   um hero com backdrop, sinopse, carrossel de elenco e (para tv) uma
+   lista visual de episódios com thumbnails.
+
+   Decisões:
+     - Hero tem altura clampada (clamp(220px, 36vh, 420px)) — equilibra
+       impacto visual sem comer toda a tela.
+     - Gradient linear sobre o backdrop garante legibilidade do título e
+       conecta visualmente o hero com o resto do modal (que é var(--bg)).
+     - Cast carousel usa scroll-snap pra UX touch + setas de scroll
+       teclado (overflow-x: auto + scroll-snap-type x mandatory).
+     - Episode cards usam contain: layout style; pra isolar o reflow de
+       cada item — render mais rápido com listas grandes.
+   ===================================================================== */
+
+/* Painel do modal: agora pode scrollar verticalmente quando details é
+   maior que a viewport (hero + cast + lista de episódios é alto). */
+.modal__panel {
+  max-height: min(92vh, 900px);
+}
+
+/* Container das views (mantém o panel preenchido). */
+.modal__views {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+}
+
+.modal__view {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal__view[hidden] { display: none; }
+
+/* Details view: scroll vertical interno (hero + sections empilhados). */
+.modal__view--details {
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Esconde o cursor de loading enquanto fetch ocorre. */
+  scrollbar-gutter: stable;
+}
+.modal__view--details::-webkit-scrollbar { width: 10px; }
+.modal__view--details::-webkit-scrollbar-thumb {
+  background: var(--bg-elev-2); border-radius: 8px;
+}
+.modal__view--details::-webkit-scrollbar-track { background: transparent; }
+
+/* Loading overlay enquanto details carrega. */
+.modal__loading {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 12px;
+  background: var(--bg);
+  color: var(--fg-dim);
+  z-index: 5;
+}
+.modal__loading[hidden] { display: none; }
+
+/* ---- Botão Voltar (aparece só na view player) -------------------------- */
+.modal__back {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-elev-2);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: .9rem;
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.modal__back:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.modal__back:active { transform: scale(.97); }
+.modal__back[hidden] { display: none; }
+
+/* Quando estamos na view player, escondemos o título (é redundante). */
+.modal--view-player .modal__title { display: none; }
+.modal--view-player .modal__back { display: inline-flex; }
+
+/* ---- HERO -------------------------------------------------------------- */
+.hero {
+  position: relative;
+  width: 100%;
+  min-height: clamp(220px, 36vh, 420px);
+  /* var(--hero-bg) é setado inline via JS com a URL do backdrop. */
+  background-image: var(--hero-bg, none);
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Gradiente garantindo legibilidade do conteúdo sobre qualquer backdrop.
+   Ponto-chave: o gradient termina em var(--bg) → conecta com o conteúdo
+   abaixo do hero, evitando linha visível de transição. */
+.hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, rgba(13,15,18,0) 0%, rgba(13,15,18,.55) 55%, var(--bg) 100%),
+    linear-gradient(90deg, rgba(13,15,18,.65) 0%, rgba(13,15,18,.2) 60%, transparent 100%);
+  pointer-events: none;
+}
+
+.hero__inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding: 28px 32px 24px;
+  display: flex; flex-direction: column;
+  gap: 12px;
+}
+
+.hero__title {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.1;
+  text-shadow: 0 2px 12px rgba(0,0,0,.6);
+}
+
+.hero__tagline {
+  margin: 0;
+  font-size: .95rem;
+  font-style: italic;
+  color: var(--fg-dim);
+  text-shadow: 0 1px 6px rgba(0,0,0,.5);
+}
+
+/* Linha de chips de meta: rating, ano, classificação, runtime, gêneros. */
+.hero__meta {
+  display: flex; flex-wrap: wrap;
+  align-items: center; gap: 8px;
+  margin-top: 4px;
+}
+
+.meta-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 6px;
+  font-size: .8rem;
+  color: var(--fg);
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+.meta-chip--rating {
+  background: rgba(229, 9, 20, .14);
+  border-color: rgba(229, 9, 20, .35);
+  color: #ff5a64;
+  font-weight: 600;
+}
+.meta-chip--cert {
+  background: rgba(255, 200, 50, .12);
+  border-color: rgba(255, 200, 50, .35);
+  color: #ffc832;
+  font-weight: 600;
+}
+
+/* Sinopse no hero (limitada em altura por linhas — se for grande, o user
+   verá tudo via scroll natural do view). */
+.hero__overview {
+  margin: 6px 0 0;
+  max-width: 760px;
+  font-size: .95rem;
+  line-height: 1.55;
+  color: rgba(255,255,255,.92);
+  text-shadow: 0 1px 4px rgba(0,0,0,.4);
+}
+
+.hero__actions {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  margin-top: 6px;
+}
+
+/* Botão "Assistir Agora" (CTA primário). */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: .95rem; font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, transform .1s, border-color .15s;
+}
+.btn:active { transform: scale(.97); }
+.btn--primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.btn--primary:hover { background: #c40811; }
+
+.btn__icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+}
+
+/* ---- Sections genéricas dentro do details ---------------------------- */
+.details-section {
+  padding: 18px 32px;
+  border-top: 1px solid var(--border);
+}
+
+.section-title {
+  margin: 0 0 12px;
+  font-size: 1.05rem; font-weight: 600;
+  color: var(--fg);
+}
+
+/* ---- ELENCO (carrossel horizontal) ----------------------------------- */
+.cast-carousel {
+  display: flex; gap: 12px;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  /* Suaviza scroll em touch/trackpad. */
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 2px 12px;
+  /* Esconde scrollbar mas mantém funcional. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-elev-2) transparent;
+}
+.cast-carousel::-webkit-scrollbar { height: 6px; }
+.cast-carousel::-webkit-scrollbar-thumb {
+  background: var(--bg-elev-2); border-radius: 6px;
+}
+.cast-carousel::-webkit-scrollbar-track { background: transparent; }
+
+.cast-item {
+  flex: 0 0 auto;
+  width: 120px;
+  scroll-snap-align: start;
+  display: flex; flex-direction: column;
+  gap: 6px;
+}
+
+.cast-photo-wrap {
+  position: relative;
+  width: 120px; height: 168px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-elev-2);
+  /* Decisão de performance: contain hint pro browser não recalcular
+     layout dos vizinhos quando uma imagem carrega tardiamente. */
+  contain: layout style;
+}
+
+.cast-photo {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  /* Fade-in suave quando a imagem carrega (evita flash branco). */
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.cast-photo.is-loaded { opacity: 1; }
+
+/* Placeholder quando ator não tem foto (profile_path null). */
+.cast-photo--placeholder {
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #1a1d22, #0f1114);
+  color: var(--muted);
+  font-size: 1.6rem;
+  width: 100%; height: 100%;
+  font-weight: 600;
+}
+
+.cast-name {
+  margin: 0;
+  font-size: .85rem; font-weight: 600;
+  color: var(--fg);
+  line-height: 1.25;
+  /* 2 linhas máx. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cast-role {
+  margin: 0;
+  font-size: .75rem;
+  color: var(--muted);
+  /* 1 linha. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---- EPISÓDIOS (cards visuais com thumbnail) ------------------------- */
+/* Substitui a lista vertical da Fase 5 por cards horizontais com still.
+   O <select> de temporadas reusa os estilos .episodes__* da Fase 5. */
+.episodes-section {
+  padding: 18px 32px 32px;
+  border-top: 1px solid var(--border);
+}
+
+.episodes-section__head {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+  margin-bottom: 16px;
+}
+.episodes-section__head .section-title { margin: 0; }
+.episodes-section__head .episodes__select-wrap { width: 240px; flex: 0 0 auto; }
+
+.episodes-section__loading {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--muted);
+  font-size: .9rem;
+  padding: 16px 4px;
+}
+.episodes-section__loading[hidden] { display: none; }
+
+.episodes-grid {
+  list-style: none; padding: 0; margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+/* Card de episódio: thumb 16:9 à esquerda + info à direita. */
+.ep-card {
+  display: grid;
+  grid-template-columns: 200px 1fr auto;
+  gap: 16px;
+  align-items: stretch;
+  padding: 12px;
+  background: var(--bg-elev);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, transform .1s;
+  /* Decisão de performance: contain isola cada card do reflow geral. */
+  contain: layout style;
+}
+.ep-card:hover {
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+}
+.ep-card:active { transform: scale(.995); }
+.ep-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.ep-card--active {
+  background: rgba(229, 9, 20, .08);
+  border-color: rgba(229, 9, 20, .45);
+}
+.ep-card--active .ep-card__num {
+  background: var(--accent);
+  color: #fff;
+}
+
+.ep-card__thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0a0c0f;
+  flex-shrink: 0;
+}
+
+.ep-card__thumb-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.ep-card__thumb-img.is-loaded { opacity: 1; }
+
+.ep-card__thumb-placeholder {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #1a1d22, #0a0c0f);
+  color: var(--muted);
+}
+
+/* Numero do ep no canto superior esquerdo do thumb. */
+.ep-card__num {
+  position: absolute;
+  top: 6px; left: 6px;
+  padding: 2px 8px;
+  background: rgba(0,0,0,.7);
+  border-radius: 4px;
+  font-size: .75rem; font-weight: 700;
+  color: var(--fg);
+  letter-spacing: .04em;
+}
+
+/* Overlay do play que aparece ao hover (evita poluir o card no idle). */
+.ep-card__play-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.4);
+  color: #fff;
+  opacity: 0;
+  transition: opacity .15s;
+  font-size: 2rem;
+}
+.ep-card:hover .ep-card__play-overlay,
+.ep-card:focus-visible .ep-card__play-overlay { opacity: 1; }
+
+.ep-card__info {
+  display: flex; flex-direction: column;
+  gap: 6px;
+  min-width: 0;       /* permite que o overflow funcione */
+  padding: 4px 0;
+}
+
+.ep-card__title {
+  margin: 0;
+  font-size: .98rem;
+  font-weight: 600;
+  color: var(--fg);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ep-card__meta {
+  font-size: .8rem;
+  color: var(--muted);
+  display: flex; gap: 8px;
+}
+
+.ep-card__overview {
+  margin: 0;
+  font-size: .85rem;
+  color: var(--fg-dim);
+  line-height: 1.4;
+  /* 2 linhas — mantém os cards uniformes. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---- Player view: ajustes para a Fase 6 ------------------------------ */
+/* Quando estamos na view player, o body usa a altura toda disponível. */
+.modal--view-player .modal__view--player {
+  display: flex;
+}
+.modal__view--player .modal__body {
+  flex: 1 1 auto;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  max-height: calc(92vh - 56px); /* desconta header */
+}
+
+/* ---- Mobile (≤ 640px) ----------------------------------------------- */
+@media (max-width: 640px) {
+  .hero { min-height: clamp(180px, 32vh, 320px); }
+  .hero__inner { padding: 20px 18px 18px; }
+  .details-section,
+  .episodes-section { padding-left: 18px; padding-right: 18px; }
+
+  /* Cards de episódio empilham (thumb em cima, info embaixo). */
+  .ep-card {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .ep-card__thumb {
+    width: 100%;
+  }
+
+  .episodes-section__head .episodes__select-wrap {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal__panel { max-height: 100vh; border-radius: 0; }
+  .modal__back span { display: none; } /* só ícone */
+  .cast-item { width: 96px; }
+  .cast-photo-wrap { width: 96px; height: 138px; }
+}
+
+/* Reduced motion: desliga fade-ins. */
+@media (prefers-reduced-motion: reduce) {
+  .cast-photo,
+  .ep-card__thumb-img { transition: none; opacity: 1; }
+}
