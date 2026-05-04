@@ -1655,7 +1655,9 @@
     function buildPlayerUrl(mediaType, tmdbId, season, episode) {
       var pathSegment = mediaType === 'movie' ? 'filme' : 'serie';
       var url = SUPERFLIX_BASE + '/' + pathSegment + '/' + encodeURIComponent(tmdbId);
-      if (mediaType === 'tv' && season && episode) {
+      // Importante: usar `!= null` (e não truthy) para suportar season=0
+      // (TMDB usa 0 para "Especiais"). Episode também pode começar em 0.
+      if (mediaType === 'tv' && season != null && episode != null) {
         url += '?season=' + encodeURIComponent(season) +
                '&episode=' + encodeURIComponent(episode);
       }
@@ -1729,7 +1731,6 @@
       state.currentEpisode = episode;
 
       applyViewClass('player');
-      renderLoadingState();
       createIframe(state.currentItem, season, episode);
 
       // Foco no botão Voltar (acessibilidade — user pode pressionar Enter
@@ -1773,6 +1774,10 @@
     function createIframe(item, season, episode) {
       // Garante limpeza prévia (caso enterPlayerView seja chamado 2x).
       destroyIframe();
+
+      // Mostra spinner DEPOIS do destroyIframe (que faz $mount.replaceChildren),
+      // senão o spinner seria apagado em seguida. onIframeLoad remove o spinner.
+      renderLoadingState();
 
       var iframe = document.createElement('iframe');
       iframe.className = 'player__iframe';
@@ -1929,8 +1934,7 @@
       retry.textContent = 'Tentar novamente';
       retry.addEventListener('click', function () {
         if (!state.currentItem) return;
-        // Recria o iframe diretamente (mantém a view player ativa).
-        renderLoadingState();
+        // Recria o iframe (createIframe já mostra o spinner internamente).
         createIframe(state.currentItem, state.currentSeason, state.currentEpisode);
       }, { signal: state.cleanups ? state.cleanups.signal : undefined });
 
