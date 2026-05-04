@@ -1616,23 +1616,29 @@
     var SUPERFLIX_BASE = 'https://superflixapi.online';
 
     /*
-     * FASE 5 — Sandbox do iframe (BLOQUEIO DE ANÚNCIOS).
+     * HOTFIX (pós-Fase 6) — Sandbox REMOVIDO.
      *
-     * Lista permissiva MÍNIMA — exatamente o que o player precisa:
-     *   - allow-forms          → submeter forms (alguns players usam)
-     *   - allow-scripts        → executar JS do player
-     *   - allow-same-origin    → manter origin do superflix (cookies/storage)
-     *   - allow-presentation   → permitir Presentation API (cast/fullscreen)
+     * O Superflix passou a injetar um detector ofuscado (`__Y.detectSandbox()`)
+     * que verifica `window.frameElement.hasAttribute('sandbox')` e, ao detectar
+     * QUALQUER valor de sandbox, redireciona o iframe para `/sanbox.php?<ref>`
+     * — endpoint que retorna HTTP 404. Resultado: a tela "404 NOT FOUND" que
+     * o usuário viu em vez do player.
      *
-     * O QUE FICA BLOQUEADO (= ad mitigation):
-     *   - allow-popups          → window.open(), target=_blank → bloqueado
-     *   - allow-modals          → alert/confirm/prompt → bloqueado
-     *   - allow-top-navigation  → o iframe NÃO pode redirecionar nossa página
-     *   - allow-pointer-lock, allow-downloads, etc. → todos negados
+     * Como a checagem é "tem o atributo?" (sem olhar tokens), nenhuma
+     * combinação de allow-* contorna a detecção. A única opção é não
+     * declarar sandbox.
      *
-     * Resultado: redirects agressivos do Superflix são neutralizados.
+     * Mitigações de ad que mantemos (defense-in-depth, sem sandbox):
+     *   - referrerpolicy="no-referrer" → reduz tracking cross-site
+     *   - allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+     *     → Permissions Policy mínima (não autoriza geolocation, mic, camera,
+     *       payment, USB, etc.)
+     *   - Bloqueador de popups nativo do Chrome cobre boa parte de window.open
+     *   - Modal próprio captura ESC; o iframe não consegue fechar nossa página
+     *     porque ele está em outra origin (mesmo sem sandbox, allow-top-navigation
+     *     cross-origin já é bloqueado pelo browser por padrão).
      */
-    var IFRAME_SANDBOX = 'allow-forms allow-scripts allow-same-origin allow-presentation';
+    // var IFRAME_SANDBOX = 'allow-forms allow-scripts allow-same-origin allow-presentation';
 
     var state = {
       isOpen: false,
@@ -1786,8 +1792,8 @@
       iframe.allowFullscreen = true;
       iframe.referrerPolicy = 'no-referrer';
 
-      // FASE 5 — SANDBOX (REQUISITO 6 — bloqueio de ads).
-      iframe.setAttribute('sandbox', IFRAME_SANDBOX);
+      // HOTFIX: sandbox removido — Superflix detecta o atributo e redireciona
+      // pra /sanbox.php (404). Detalhes na constante IFRAME_SANDBOX comentada.
 
       // Listeners + timeout idênticos à Fase 5.
       var sig = state.cleanups ? state.cleanups.signal : undefined;
