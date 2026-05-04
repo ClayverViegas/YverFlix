@@ -2109,7 +2109,11 @@
       Favorites.list()
         .then(function (rows) {
           if (!rows.length) {
-            hide();
+            // Só esconde se NENHUM card foi adicionado por addOne()
+            // durante o fetch (race: insert chega depois do snapshot
+            // do SELECT). Sem essa checagem, o item recém-favoritado
+            // some da UI até o próximo F5.
+            if (!$list.children.length) hide();
             console.log('[MyList] sem favoritos — section hidden.');
             return;
           }
@@ -2141,9 +2145,11 @@
           console.log('[MyList] carregada com', rows.length, 'favorito(s).');
         })
         .catch(function (err) {
-          // Falha aqui não derruba o app — só esconde a seção.
+          // Falha aqui não derruba o app — só esconde a seção SE
+          // nenhum card já tiver sido adicionado por addOne() durante
+          // o fetch (mesma race do branch !rows.length acima).
           console.warn('[MyList] init falhou:', err);
-          hide();
+          if (!$list.children.length) hide();
         });
     }
 
