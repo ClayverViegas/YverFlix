@@ -2089,6 +2089,18 @@
      */
     var byKey = Object.create(null);
 
+    /**
+     * FASE 7.1 — Mesmo padrão do `latestReqId` no Favorites: contador
+     * monotônico que invalida resultados de fetches obsoletos.
+     *
+     * Cenário: F5 com sessão persistida → init() dispara fetch com
+     * fallback `user_teste_123` (currentSession ainda null). Logo após,
+     * INITIAL_SESSION chega → reload() limpa DOM e dispara fetch do
+     * user real. Sem versionamento, o `.then()` lento do init() chega
+     * DEPOIS e injeta favoritos do user errado mascarando os corretos.
+     */
+    var loadGen = 0;
+
     function key(mediaType, tmdbId) {
       return mediaType + ':' + tmdbId;
     }
@@ -2139,8 +2151,16 @@
       // que o fetch inicial falhe.
       window.addEventListener('yverflix:favorites-changed', onChanged);
 
+      var myGen = ++loadGen;
       Favorites.list()
         .then(function (rows) {
+          // Last-write-wins: descarta resposta se reload() já
+          // disparou um fetch novo (login persistido chegando via
+          // INITIAL_SESSION durante init).
+          if (myGen !== loadGen) {
+            console.log('[MyList] init() obsoleto (gen', myGen, '!=', loadGen, ') — descartado.');
+            return;
+          }
           if (!rows.length) {
             // Só esconde se NENHUM card foi adicionado por addOne()
             // durante o fetch (race: insert chega depois do snapshot
@@ -2178,6 +2198,7 @@
           console.log('[MyList] carregada com', rows.length, 'favorito(s).');
         })
         .catch(function (err) {
+          if (myGen !== loadGen) return;     // resposta obsoleta
           // Falha aqui não derruba o app — só esconde a seção SE
           // nenhum card já tiver sido adicionado por addOne() durante
           // o fetch (mesma race do branch !rows.length acima).
@@ -2247,6 +2268,10 @@
      *   4. Re-fetcha com o novo USER_ID
      */
     function reload() {
+      // Bumpar gen ANTES de limpar — qualquer fetch in-flight (incluindo
+      // o disparado pelo init()) tem seu .then() invalidado.
+      var myGen = ++loadGen;
+
       // Unobserve imgs antes de limpar pra liberar referências do observer
       var imgs = $list.querySelectorAll('img');
       for (var i = 0; i < imgs.length; i++) imageObserver.unobserve(imgs[i]);
@@ -2260,6 +2285,7 @@
 
       Favorites.list()
         .then(function (rows) {
+          if (myGen !== loadGen) return;     // outro reload mais novo já rolou
           if (!rows.length) {
             if (!$list.children.length) hide();
             return;
@@ -2285,6 +2311,7 @@
           console.log('[MyList] recarregada com', rows.length, 'favorito(s) do novo user.');
         })
         .catch(function (err) {
+          if (myGen !== loadGen) return;
           console.warn('[MyList] reload falhou:', err);
           if (!$list.children.length) hide();
         });
