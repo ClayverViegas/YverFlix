@@ -2117,8 +2117,15 @@
           var allLazy = [];
           for (var i = 0; i < rows.length; i++) {
             var item = rowToItem(rows[i]);
+            // Race: se o usuário favoritou DURANTE o fetch inicial,
+            // addOne() já inseriu o card e populou byKey. Agora a row
+            // também volta no resultado do SELECT — pulamos pra não
+            // duplicar o DOM nem sobrescrever byKey (o que deixaria o
+            // primeiro card órfão num removeOne futuro).
+            var dupKey = key(item.type, item.tmdbId);
+            if (byKey[dupKey]) continue;
             var built = buildCardElement(item);
-            byKey[key(item.type, item.tmdbId)] = built.article;
+            byKey[dupKey] = built.article;
             frag.appendChild(built.fragment);
             for (var j = 0; j < built.lazyImgs.length; j++) {
               allLazy.push(built.lazyImgs[j]);
