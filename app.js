@@ -522,6 +522,7 @@
       posterUrl: data.poster_path
         ? CONFIG.TMDB_IMG_BASE + '/' + CONFIG.POSTER_SIZE + data.poster_path
         : null,
+      posterPath: data.poster_path || null,  // FASE 6.2 — para gravar no Supabase
       releaseDate: (isMovie ? data.release_date : data.first_air_date) || '',
       voteAverage: typeof data.vote_average === 'number' ? data.vote_average : 0,
       runtime: isMovie
@@ -623,6 +624,7 @@
       posterUrl: raw.poster_path
         ? CONFIG.TMDB_IMG_BASE + '/' + CONFIG.POSTER_SIZE + raw.poster_path
         : null,
+      posterPath: raw.poster_path || null,  // FASE 6.2 — para gravar no Supabase
       releaseDate: (isMovie ? raw.release_date : raw.first_air_date) || '',
       voteAverage: typeof raw.vote_average === 'number' ? raw.vote_average : 0,
     };
@@ -759,6 +761,11 @@
      */
     article.dataset.id = String(item.tmdbId);
     article.dataset.mediaType = item.type;
+    // FASE 6.2 — guardamos o poster_path original (não a URL) pra
+    // gravar no Supabase quando o usuário favoritar. Salvar só o path
+    // (não a URL inteira) deixa o size de imagem flexível em listagens
+    // futuras (e.g. Minha Lista pode usar w185 em vez de w342).
+    if (item.posterPath) article.dataset.posterPath = item.posterPath;
     article.setAttribute('aria-label', item.title);
 
     // textContent (não innerHTML) → seguro contra XSS.
@@ -1677,6 +1684,267 @@
     };
   })();
 
+  /* ----------------------- 4.5 Favoritos (FASE 6.2) --------------------- */
+
+  /**
+   * FASE 6.2 — Persistência de Favoritos via Supabase.
+   *
+   * Módulo IIFE encapsulado. Único contrato exposto:
+   *   - attach(item)  → liga o botão de coração no header do modal
+   *                     ao item atual e carrega o status do banco.
+   *   - detach()      → desliga, invalida requests pendentes e reseta visual.
+   *
+   * RACE CONDITIONS — como tratamos as promessas pra evitar "out-of-sync":
+   *
+   *   Cenário A: usuário clica MUITO RÁPIDO no coração (insert→delete→insert→...).
+   *
+   *     1) Cada chamada (loadStatus / toggle) gera um `myReqId` monotônico
+   *        a partir de um contador `latestReqId` no closure.
+   *     2) O botão fica em `disabled` (CSS `cursor: progress`) enquanto a
+   *        request voa — descarte de cliques no nível UI.
+   *     3) Antes de aplicar resposta no DOM, comparamos `myReqId !==
+   *        latestReqId` e descartamos respostas obsoletas. Padrão
+   *        "last-write-wins" — nunca deixa a UI refletir uma resposta
+   *        velha que chegou DEPOIS de uma mais nova. Útil em redes ruins
+   *        onde insert pode demorar 800ms e delete subsequente 200ms.
+   *     4) Optimistic UI: o ícone muda de estado IMEDIATAMENTE no clique,
+   *        ANTES da resposta. Se vier erro, revertemos. Sensação de
+   *        instantaneidade sem mentir sobre o estado real.
+   *
+   *   Cenário B: usuário fecha o modal antes da request voltar.
+   *
+   *     - `detach()` incrementa `latestReqId` → qualquer .then() pendente
+   *       cai no early-return. Não tentamos atualizar DOM já desmontado.
+   *
+   *   Cenário C: usuário troca de modal (item A → item B) antes da
+   *             primeira request de A voltar.
+   *
+   *     - `attach(B)` chama `detach()` (que invalida o reqId de A) antes
+   *       de iniciar o fetch de B. Resposta de A nunca pinta o estado de B.
+   *
+   *   Cenário D: insert duplicado por race (cliquei 2x rapidíssimo antes
+   *             do disable pegar).
+   *
+   *     - O UNIQUE (user_id, tmdb_id, media_type) no Postgres é o último
+   *       guardião. Se algo passar, vira `error.code === '23505'` e
+   *       fazemos rollback visual — o banco continua consistente.
+   *
+   * Performance:
+   *   - loadStatus roda EM PARALELO ao DetailsView.mount() — modal abre
+   *     imediatamente, coração entra em "carregando" e atualiza assincronamente.
+   *   - .maybeSingle() em vez de .single() — não levanta erro quando não
+   *     existe linha (é o caso comum: item não favoritado).
+   *   - Cacheia o `id` (PK) ao carregar status → DELETE futuro filtra
+   *     direto pelo id (faster do que pelo composto).
+   */
+  var Favorites = (function () {
+    var USER_ID = 'user_teste_123';     // FASE 6.3 → trocar por auth.user.id
+    var $btn = document.getElementById('modal-fav');
+
+    /** @type {object|null} Cliente Supabase (null se CDN não carregou) */
+    function getClient() {
+      return (window.YverFlix && window.YverFlix.supabase) || null;
+    }
+
+    /** Contador monotônico — invalida promessas antigas. */
+    var latestReqId = 0;
+
+    /** Item atualmente atrelado ao botão. */
+    var currentItem = null;
+
+    /** PK do row de favorito (cacheada no loadStatus pra delete rápido). */
+    var currentRowId = null;
+
+    /** Listener de click — guardado pra remover em detach. */
+    var clickHandler = null;
+
+    function attach(item) {
+      // Sempre detach antes — invalida qualquer request anterior + remove
+      // listener antigo. Idempotente (chamar 2x não duplica handler).
+      detach();
+
+      var supa = getClient();
+      if (!supa) {
+        // Degradação graciosa: sem Supabase, esconde o botão. Modal continua
+        // funcionando normalmente.
+        $btn.hidden = true;
+        return;
+      }
+
+      currentItem = item;
+      currentRowId = null;
+
+      // Estado inicial: botão visível, em loading, sem indicar fav (até saber).
+      $btn.hidden = false;
+      setActive(false);
+      setLoading(true);
+
+      // Liga listener ANTES de saber o status — garante que se o usuário
+      // clicar muito rápido (raro), o handler ja existe. O handler em si
+      // bate em $btn.disabled === true e ignora o clique.
+      clickHandler = onClickToggle;
+      $btn.addEventListener('click', clickHandler);
+
+      // Dispara verificação de status. NÃO bloqueia — modal já está aberto
+      // visualmente, só o coração permanece em loading até a resposta.
+      var myReqId = ++latestReqId;
+      supa
+        .from('favorites')
+        .select('id')
+        .eq('user_id', USER_ID)
+        .eq('tmdb_id', item.tmdbId)
+        .eq('media_type', item.mediaType)
+        .maybeSingle()
+        .then(function (res) {
+          if (myReqId !== latestReqId) return;     // resposta obsoleta
+          if (res.error) {
+            // Erro de leitura → desliga botão (não dá pra prometer toggle).
+            console.warn('[Favorites] loadStatus erro:', res.error);
+            setLoading(false);
+            $btn.disabled = true;
+            return;
+          }
+          currentRowId = res.data ? res.data.id : null;
+          setActive(!!res.data);
+          setLoading(false);
+        })
+        .catch(function (err) {
+          if (myReqId !== latestReqId) return;
+          console.warn('[Favorites] loadStatus catch:', err);
+          setLoading(false);
+          $btn.disabled = true;
+        });
+    }
+
+    function detach() {
+      // Invalida QUALQUER promessa pendente (loadStatus ou toggle).
+      // Resposta tardia bate em `myReqId !== latestReqId` e dá early-return.
+      latestReqId++;
+
+      if (clickHandler) {
+        $btn.removeEventListener('click', clickHandler);
+        clickHandler = null;
+      }
+      currentItem = null;
+      currentRowId = null;
+      $btn.hidden = true;
+      $btn.disabled = false;        // reset pro próximo attach
+      setActive(false);
+      setLoading(false);
+      $btn.classList.remove('modal__fav--just-toggled');
+    }
+
+    function onClickToggle() {
+      // O `disabled` do <button> já bloqueia clicks no nível do browser,
+      // mas reforço aqui — defesa em profundidade.
+      if ($btn.disabled || !currentItem) return;
+      toggle();
+    }
+
+    function toggle() {
+      var supa = getClient();
+      if (!supa || !currentItem) return;
+
+      var item = currentItem;
+      var wasActive = $btn.classList.contains('modal__fav--active');
+      var willBeActive = !wasActive;
+
+      // Optimistic UI: muda visual ANTES da resposta. Animação de pulse pra
+      // confirmar feedback tátil. Se o servidor falhar, revertemos abaixo.
+      setActive(willBeActive);
+      setLoading(true);
+      pulse();
+
+      var myReqId = ++latestReqId;
+      var op = wasActive ? doDelete(item) : doInsert(item);
+
+      op
+        .then(function (res) {
+          if (myReqId !== latestReqId) return;    // resposta obsoleta
+          if (res.error) {
+            // Em caso de UNIQUE violation (23505) o estado real É `active`,
+            // então o optimistic UI já está correto — só logamos. Pra
+            // outros erros, revertemos.
+            var isUniqueViolation = res.error.code === '23505';
+            console[isUniqueViolation ? 'warn' : 'error'](
+              '[Favorites] toggle erro:', res.error
+            );
+            if (!isUniqueViolation) setActive(wasActive);
+          } else {
+            // Sucesso: atualiza cache do PK.
+            if (willBeActive && res.data && res.data[0]) {
+              currentRowId = res.data[0].id;
+            } else if (!willBeActive) {
+              currentRowId = null;
+            }
+          }
+          setLoading(false);
+        })
+        .catch(function (err) {
+          if (myReqId !== latestReqId) return;
+          console.error('[Favorites] toggle catch:', err);
+          setActive(wasActive);          // rollback visual
+          setLoading(false);
+        });
+    }
+
+    function doInsert(item) {
+      return getClient()
+        .from('favorites')
+        .insert({
+          user_id: USER_ID,
+          tmdb_id: item.tmdbId,
+          media_type: item.mediaType,
+          title: item.title || null,
+          poster_path: item.posterPath || null,
+        })
+        .select();      // retorna a linha inserida (com id)
+    }
+
+    function doDelete(item) {
+      var q = getClient().from('favorites').delete();
+      // Se temos o PK cacheado, filtra direto por id (mais rápido).
+      // Senão, fallback pelo composto (user_id + tmdb_id + media_type).
+      if (currentRowId != null) {
+        return q.eq('id', currentRowId);
+      }
+      return q
+        .eq('user_id', USER_ID)
+        .eq('tmdb_id', item.tmdbId)
+        .eq('media_type', item.mediaType);
+    }
+
+    function setActive(active) {
+      $btn.classList.toggle('modal__fav--active', !!active);
+      $btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      $btn.setAttribute(
+        'aria-label',
+        active ? 'Remover dos favoritos' : 'Adicionar aos favoritos'
+      );
+      var label = $btn.querySelector('.modal__fav-label');
+      if (label) label.textContent = active ? 'Remover dos favoritos' : 'Favoritar';
+    }
+
+    function setLoading(loading) {
+      $btn.disabled = !!loading;
+    }
+
+    function pulse() {
+      // Trigger CSS animation: remove + force reflow + add.
+      $btn.classList.remove('modal__fav--just-toggled');
+      void $btn.offsetWidth;
+      $btn.classList.add('modal__fav--just-toggled');
+      setTimeout(function () {
+        $btn.classList.remove('modal__fav--just-toggled');
+      }, 400);
+    }
+
+    return {
+      attach: attach,
+      detach: detach,
+    };
+  })();
+
   /* ----------------------- 5. Content Modal (Fase 6) -------------------- */
 
   /**
@@ -1813,7 +2081,11 @@
         enterPlayerView(season, episode);
       });
 
-      // 6) Foco inicial no botão fechar (acessibilidade).
+      // 6) FASE 6.2 — liga o botão de favoritos ao item atual. Faz a
+      //    consulta de status em PARALELO ao DetailsView (não bloqueia).
+      Favorites.attach(item);
+
+      // 7) Foco inicial no botão fechar (acessibilidade).
       setTimeout(function () {
         var closeBtn = $modal.querySelector('.modal__close');
         if (closeBtn) closeBtn.focus();
@@ -1932,6 +2204,11 @@
 
       // 2) Cleanup do DetailsView (que cleanup-a SeriesEpisodes em cascata).
       try { DetailsView.destroy(); } catch (e) { /* noop */ }
+
+      // 2.5) FASE 6.2 — desliga botão de favoritos. Invalida quaisquer
+      //      promessas pendentes (loadStatus / toggle) — respostas tardias
+      //      caem em early-return.
+      try { Favorites.detach(); } catch (e) { /* noop */ }
 
       // 3) Reseta classes e estados visuais.
       $modal.classList.remove('modal--open');
@@ -2285,6 +2562,9 @@
       tmdbId: Number(card.dataset.id),
       mediaType: card.dataset.mediaType,
       title: titleEl ? titleEl.textContent : '',
+      // FASE 6.2 — passa pro Favorites pra gravar no Supabase.
+      // Pode ser undefined (filme/série sem poster); a tabela aceita null.
+      posterPath: card.dataset.posterPath || null,
     });
   });
 

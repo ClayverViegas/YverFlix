@@ -1285,3 +1285,93 @@ body {
   .cast-photo,
   .ep-card__thumb-img { transition: none; opacity: 1; }
 }
+
+/* ============================================================
+   FASE 6.2 — Botão Favoritar (coração) no header do modal
+   ============================================================
+   Estados visuais (todos via classes / atributos):
+     - [hidden]              → escondido (modal fechado / view=player)
+     - [disabled]            → carregando: spinner aparece, ícone some
+     - .modal__fav--active   → favoritado: SVG fica preenchido, accent
+     - hover/focus           → sutil destaque
+*/
+.modal__fav {
+  flex: 0 0 auto;
+  position: relative;
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--fg);
+  border-radius: 999px;
+  cursor: pointer;
+  margin-right: 8px;
+  transition: background .15s ease, border-color .15s ease,
+              transform .1s ease, color .15s ease;
+}
+.modal__fav:hover:not(:disabled) {
+  background: var(--bg-elev-1);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.modal__fav:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.modal__fav:active:not(:disabled) { transform: scale(.92); }
+.modal__fav[hidden] { display: none; }
+
+/* Estado favoritado: ícone preenchido + accent. */
+.modal__fav--active .modal__fav-icon {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+.modal__fav--active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Loading: ícone some, spinner aparece. Usar opacity (não display) pra
+   não causar reflow durante o toggle — animação mais suave. */
+.modal__fav-icon { transition: opacity .12s ease, transform .15s ease; }
+.modal__fav:disabled { cursor: progress; opacity: .85; }
+.modal__fav:disabled .modal__fav-icon { opacity: 0; transform: scale(.85); }
+
+.modal__fav-spinner {
+  position: absolute;
+  width: 18px; height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  opacity: 0;
+  animation: spinner-rotate .9s linear infinite;
+  transition: opacity .12s ease;
+}
+.modal__fav:disabled .modal__fav-spinner { opacity: 1; }
+
+/* "Pulse" sutil ao favoritar (feedback positivo). Disparado pela classe
+   .modal__fav--just-toggled adicionada por 250ms pelo JS. */
+@keyframes fav-pulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.modal__fav--just-toggled .modal__fav-icon {
+  animation: fav-pulse .35s ease;
+}
+
+/* Coração só na view de detalhes (não polui o header do player). */
+.modal--view-player .modal__fav { display: none; }
+
+/* visually-hidden: texto acessível mas não-visual (SR-only). */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0);
+  white-space: nowrap; border: 0;
+}
+
+@media (max-width: 640px) {
+  .modal__fav { width: 36px; height: 36px; margin-right: 4px; }
+}
