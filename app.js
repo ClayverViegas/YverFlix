@@ -1404,7 +1404,22 @@
       } catch (e) { return null; }
     }
 
-    return { mount: mount, destroy: destroy, resolveNextEpisode: resolveNextEpisode };
+    /**
+     * Retorna a lista de episódios da temporada atualmente carregada em cache.
+     * Usado pelo goToNextEpisode para navegação index-based (sem incremento
+     * matemático puro — evita pular episódios em séries com numbering não
+     * sequencial).
+     *
+     * @returns {Array<{number:number, name:string, ...}>}
+     */
+    function getCurrentList() {
+      if (!current) return [];
+      var entry = cache[current.tmdbId];
+      if (!entry || !entry.episodes[current.currentSeason]) return [];
+      return entry.episodes[current.currentSeason];
+    }
+
+    return { mount: mount, destroy: destroy, resolveNextEpisode: resolveNextEpisode, getCurrentList: getCurrentList };
   })();
 
   /* ====================================================================
@@ -2821,6 +2836,15 @@
     var $nextEpBtn      = document.getElementById('btn-next-ep');
     var $skipBtn        = document.getElementById('btn-skip-10');
 
+    // Subtitle central do player — sincronizado via syncModalMetadata.
+    // Criado dinamicamente (não existe no HTML) e inserido entre controls e mount.
+    var $subtitle = document.createElement('div');
+    $subtitle.className = 'modal__card-subtitle';
+    $subtitle.setAttribute('aria-live', 'polite');
+    if ($playerView && $mount) {
+      $playerView.insertBefore($subtitle, $mount);
+    }
+
     var IFRAME_LOAD_TIMEOUT_MS = 12000;
     var SUPERFLIX_BASE = 'https://superflixapi.online';
 
@@ -3058,6 +3082,8 @@
       // Sincroniza a UI das tabs com a preferência atual (importante quando
       // o user trocou de server numa sessão e abre outro conteúdo agora).
       syncServerTabsUI();
+      // Garante sync dos labels (header + subtitle) com o novo S/E.
+      syncModalMetadata(season, episode, episodeTitle);
       createIframe(state.currentItem, season, episode);
 
       // FASE 8 — toda entrada no player é um "play" → registra no histórico.
@@ -3078,27 +3104,59 @@
 
     /**
      * Resolve e navega para o próximo episódio.
-     * Se estiver no último ep da temporada, tenta E01 da próxima.
-     * Se for o último da última temporada, é noop.
+     * Usa o índice da lista renderizada (getCurrentList) para progressão
+     * linear — evita pular episódios em séries com numbering não sequencial.
+     * Se estiver no último ep da temporada, delega pra resolveNextEpisode
+     * (cross-season). Tudo protegido com try/catch + null guards.
      */
     function goToNextEpisode() {
-      if (!state.currentItem || state.currentItem.mediaType !== 'tv') return;
-      if (state.currentSeason == null || state.currentEpisode == null) return;
+      try {
+        if (!state.currentItem || state.currentItem.mediaType !== 'tv') return;
+        if (state.currentSeason == null || state.currentEpisode == null) return;
+        if (!state.isOpen) return;
 
-      var btn = $nextEpBtn;
-      if (btn) btn.disabled = true;
+        var btn = $nextEpBtn;
+        if (btn) btn.disabled = true;
 
-      SeriesEpisodes.resolveNextEpisode(
-        state.currentItem.tmdbId,
-        state.currentSeason,
-        state.currentEpisode
-      ).then(function (next) {
-        if (!next) return;
-        if (!state.isOpen || !state.currentItem) return;
-        enterPlayerView(next.season, next.episode, next.title);
-      }).catch(function () {}).then(function () {
-        if (btn) btn.disabled = false;
-      });
+        // Passo 1: busca index-based na lista atual (cache quente).
+        var list = SeriesEpisodes.getCurrentList();
+        if (list && list.length) {
+          var currentIndex = -1;
+          for (var i = 0; i < list.length; i++) {
+            if (list[i].number === state.currentEpisode) {
+              currentIndex = i;
+              break;
+            }
+          }
+
+          if (currentIndex >= 0 && currentIndex < list.length - 1) {
+            var nextEp = list[currentIndex + 1];
+            if (nextEp && nextEp.number != null) {
+              enterPlayerView(state.currentSeason, nextEp.number, nextEp.name || null);
+              if (btn) btn.disabled = false;
+              return;
+            }
+          }
+        }
+
+        // Passo 2: último da temporada — resolve cross-season.
+        SeriesEpisodes.resolveNextEpisode(
+          state.currentItem.tmdbId,
+          state.currentSeason,
+          state.currentEpisode
+        ).then(function (next) {
+          if (!next || next.season == null || next.episode == null) return;
+          if (!state.isOpen || !state.currentItem) return;
+          enterPlayerView(next.season, next.episode, next.title || null);
+        }).catch(function (err) {
+          console.warn('[ContentModal] goToNextEpisode cross-season falhou:', err);
+        }).then(function () {
+          if (btn) btn.disabled = false;
+        });
+      } catch (err) {
+        console.error('[ContentModal] goToNextEpisode erro:', err);
+        if ($nextEpBtn) $nextEpBtn.disabled = false;
+      }
     }
 
     /**
@@ -3179,19 +3237,31 @@
 
       if (view === 'details') {
         $title.textContent = state.currentItem ? state.currentItem.title : 'Detalhes';
+        if ($subtitle) $subtitle.textContent = '';
       } else {
-        var s = state.currentSeason;
-        var e = state.currentEpisode;
-        if (s != null && e != null) {
-          var label = s + 'x' + (e < 10 ? '0' + e : String(e));
-          if (state.currentEpisodeTitle) {
-            label += ' \u2014 ' + state.currentEpisodeTitle;
-          }
-          $title.textContent = label;
-        } else {
-          $title.textContent = state.currentItem ? state.currentItem.title : 'Player';
-        }
+        syncModalMetadata(state.currentSeason, state.currentEpisode, state.currentEpisodeTitle);
       }
+    }
+
+    /**
+     * Sincroniza os labels de metadata (header + subtitle central) sempre
+     * que há mudança de episódio. Garante que $title e $subtitle refligam
+     * o MESMO estado (season/episode), eliminando a dessincronia de '1x1'.
+     *
+     * @param {number|null} s     season
+     * @param {number|null} e     episode
+     * @param {string|null} title título do episódio
+     */
+    function syncModalMetadata(s, e, title) {
+      var label;
+      if (s != null && e != null) {
+        label = s + 'x' + (e < 10 ? '0' + e : String(e));
+        if (title) label += ' \u2014 ' + title;
+      } else {
+        label = state.currentItem ? state.currentItem.title : 'Player';
+      }
+      $title.textContent = label;
+      if ($subtitle) $subtitle.textContent = label;
     }
 
     /*

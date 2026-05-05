@@ -1830,6 +1830,24 @@ body {
   flex-shrink: 0;
 }
 
+/* ---- Subtitle central do player (syncModalMetadata) -------------------- */
+
+.modal__card-subtitle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  font-size: .9rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  min-height: 36px;
+}
+.modal__card-subtitle:empty { display: none; }
+
 /* ---- Responsive: ≤768px ----------------------------------------------- */
 
 @media (max-width: 768px) {
@@ -1850,6 +1868,16 @@ body {
   .player__action--next span {
     display: none;
   }
+
+  /* Garante que o botão "Próximo" não seja sobreposto pelo iframe em mobile. */
+  #btn-next-ep {
+    z-index: 100;
+    display: flex !important;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+  #btn-next-ep[hidden] { display: none !important; }
 }
 
 /* ---- Continuar Assistindo (rail na home) ------------------------------- */
