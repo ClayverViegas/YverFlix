@@ -2511,6 +2511,30 @@
     }
 
     /**
+     * Busca a última entrada de watch_history para (tmdbId, mediaType).
+     * Usado pelo ContentModal pra hidratar o S/E ao abrir séries da Home.
+     * @returns {Promise<{season:number, episode:number}|null>}
+     */
+    function getOne(tmdbId, mediaType) {
+      var supa = getClient();
+      if (!supa) return Promise.resolve(null);
+      return supa
+        .from(TABLE)
+        .select('season, episode, episode_title')
+        .eq('user_id', getCurrentUserId())
+        .eq('tmdb_id', tmdbId)
+        .eq('media_type', mediaType)
+        .limit(1)
+        .then(function (res) {
+          if (res.error) {
+            console.warn('[History] getOne erro:', res.error);
+            return null;
+          }
+          return (res.data && res.data[0]) || null;
+        });
+    }
+
+    /**
      * Cancela timers + limpa caches. Chamado em logout (user trocou).
      */
     function invalidate() {
@@ -2525,7 +2549,7 @@
       for (var k = 0; k < ss.length; k++) delete sigCache[ss[k]];
     }
 
-    return { touch: touch, list: list, invalidate: invalidate };
+    return { touch: touch, list: list, getOne: getOne, invalidate: invalidate };
   })();
   // Expõe pra debugging (igual padrão YverFlix.supabase).
   window.YverFlix = window.YverFlix || {};
@@ -2819,6 +2843,8 @@
       lastFocused: null,
     };
 
+    var openGeneration = 0;
+
     /**
      * Server 1 — Superflix. Mesma URL da Fase 5/6 (query params).
      */
@@ -2908,30 +2934,55 @@
       });
       $back.addEventListener('click', enterDetailsView, { signal: sig });
 
-      // 5) FASE 6 — monta DetailsView. onPlay é o callback que entra no
-      //    player. Para filmes: (null, null) → cria iframe sem season/ep.
-      //    Para séries: (season, episode, episodeTitle) → cria iframe.
-      // 5.1) FASE 8 — passa opts.resume* pro DetailsView pra que as séries
-      //      auto-selecionem a temporada/episódio salvos e (se autoplay)
-      //      disparem o player imediatamente após carregar a temporada.
-      DetailsView.mount(item, $detailsContent, $detailsLoading, function (season, episode, episodeTitle) {
-        enterPlayerView(season, episode, episodeTitle);
-      }, {
-        resumeSeason: opts.resumeSeason,
-        resumeEpisode: opts.resumeEpisode,
-        autoplay: !!opts.autoplay,
-      });
+      // 5) Para séries sem resume explícito, consulta watch_history antes
+      //    de montar o DetailsView. A query é indexada (user_id, tmdb_id,
+      //    media_type) e resolve em ~50-100ms — o modal já está visível
+      //    com loading state.
+      var myGen = ++openGeneration;
 
-      // 6) FASE 6.2 — liga o botão de favoritos ao item atual. Faz a
-      //    consulta de status em PARALELO ao DetailsView (não bloqueia).
-      Favorites.attach(item);
+      var mountDetails = function (resolved) {
+        DetailsView.mount(item, $detailsContent, $detailsLoading, function (season, episode, episodeTitle) {
+          enterPlayerView(season, episode, episodeTitle);
+        }, resolved);
 
-      // 7) FASE 8 — autoplay direto pra view player (filme vindo do
-      //    Continuar Assistindo, ou click em card sem necessidade de detalhes).
-      //    Para séries, o autoplay é aplicado pelo DetailsView quando a
-      //    temporada chega (precisa do episode_title pra registrar history).
-      if (opts.autoplay && item.mediaType === 'movie') {
-        enterPlayerView(null, null, null);
+        // 6) FASE 6.2 — liga o botão de favoritos ao item atual.
+        Favorites.attach(item);
+
+        // 7) FASE 8 — autoplay direto pra view player (filme vindo do
+        //    Continuar Assistindo). Para séries, o autoplay é aplicado
+        //    pelo SeriesEpisodes quando a temporada carrega.
+        if (resolved.autoplay && item.mediaType === 'movie') {
+          enterPlayerView(null, null, null);
+        }
+      };
+
+      if (item.mediaType === 'tv' && opts.resumeSeason == null && !opts.autoplay) {
+        $detailsLoading.hidden = false;
+        HistoryService.getOne(item.tmdbId, 'tv')
+          .catch(function () { return null; })
+          .then(function (row) {
+            if (myGen !== openGeneration || !state.isOpen) return;
+            if (!state.currentItem || state.currentItem.tmdbId !== item.tmdbId) return;
+
+            var resolved = {
+              resumeSeason: opts.resumeSeason,
+              resumeEpisode: opts.resumeEpisode,
+              autoplay: !!opts.autoplay,
+            };
+
+            if (row && row.season != null && row.episode != null) {
+              resolved.resumeSeason = row.season;
+              resolved.resumeEpisode = row.episode;
+            }
+
+            mountDetails(resolved);
+          });
+      } else {
+        mountDetails({
+          resumeSeason: opts.resumeSeason,
+          resumeEpisode: opts.resumeEpisode,
+          autoplay: !!opts.autoplay,
+        });
       }
 
       // 8) Foco inicial no botão fechar (acessibilidade).
