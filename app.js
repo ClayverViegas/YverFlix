@@ -2836,15 +2836,6 @@
     var $nextEpBtn      = document.getElementById('btn-next-ep');
     var $skipBtn        = document.getElementById('btn-skip-10');
 
-    // Subtitle central do player — sincronizado via syncModalMetadata.
-    // Criado dinamicamente (não existe no HTML) e inserido entre controls e mount.
-    var $subtitle = document.createElement('div');
-    $subtitle.className = 'modal__card-subtitle';
-    $subtitle.setAttribute('aria-live', 'polite');
-    if ($playerView && $mount) {
-      $playerView.insertBefore($subtitle, $mount);
-    }
-
     var IFRAME_LOAD_TIMEOUT_MS = 12000;
     var SUPERFLIX_BASE = 'https://superflixapi.online';
 
@@ -3082,8 +3073,6 @@
       // Sincroniza a UI das tabs com a preferência atual (importante quando
       // o user trocou de server numa sessão e abre outro conteúdo agora).
       syncServerTabsUI();
-      // Garante sync dos labels (header + subtitle) com o novo S/E.
-      syncModalMetadata(season, episode, episodeTitle);
       createIframe(state.currentItem, season, episode);
 
       // FASE 8 — toda entrada no player é um "play" → registra no histórico.
@@ -3237,16 +3226,14 @@
 
       if (view === 'details') {
         $title.textContent = state.currentItem ? state.currentItem.title : 'Detalhes';
-        if ($subtitle) $subtitle.textContent = '';
       } else {
         syncModalMetadata(state.currentSeason, state.currentEpisode, state.currentEpisodeTitle);
       }
     }
 
     /**
-     * Sincroniza os labels de metadata (header + subtitle central) sempre
-     * que há mudança de episódio. Garante que $title e $subtitle refligam
-     * o MESMO estado (season/episode), eliminando a dessincronia de '1x1'.
+     * Sincroniza o label de metadata no header sempre que há mudança de
+     * episódio. Formata como "SxEp — Título".
      *
      * @param {number|null} s     season
      * @param {number|null} e     episode
@@ -3261,7 +3248,6 @@
         label = state.currentItem ? state.currentItem.title : 'Player';
       }
       $title.textContent = label;
-      if ($subtitle) $subtitle.textContent = label;
     }
 
     /*
@@ -3296,6 +3282,7 @@
       }, IFRAME_LOAD_TIMEOUT_MS);
 
       iframe.src = buildPlayerUrl(state.currentServer, item.mediaType, item.tmdbId, season, episode);
+      console.log('[Player-Debug] URL Gerada:', iframe.src);
       state.iframe = iframe;
       $mount.appendChild(iframe);
     }
