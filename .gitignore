@@ -4,3 +4,16 @@
 node_modules/
 .vscode/
 .idea/
+# Ambiente Kilo Code / IA
+.kilo/
+kilo.json
+agent-manager.json
+worktrees/
+
+# Dependências
+node_modules/
+
+# Segurança e Supabase
+.env
+.env.*
+supabase/.temp/

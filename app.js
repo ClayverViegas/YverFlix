@@ -1361,7 +1361,50 @@
       current = null;
     }
 
-    return { mount: mount, destroy: destroy };
+    /**
+     * Resolve o próximo episódio dado (tmdbId, season, episode).
+     * Usa o cache existente; se a temporada seguinte não está em cache,
+     * faz fetch (getSeasonEpisodes é compartilhado no escopo pai).
+     *
+     * @returns {Promise<{season:number, episode:number, title:string}|null>}
+     */
+    async function resolveNextEpisode(tmdbId, season, episode) {
+      var entry = cache[tmdbId];
+      if (!entry) return null;
+
+      var eps = entry.episodes[season];
+      if (!eps) {
+        try {
+          eps = await getSeasonEpisodes(tmdbId, season);
+          entry.episodes[season] = eps;
+        } catch (e) { return null; }
+      }
+
+      var idx = -1;
+      for (var i = 0; i < eps.length; i++) {
+        if (eps[i].number === episode) { idx = i; break; }
+      }
+
+      if (idx >= 0 && idx < eps.length - 1) {
+        var next = eps[idx + 1];
+        return { season: season, episode: next.number, title: next.name };
+      }
+
+      var nextSeasonNum = season + 1;
+      var hasSeason = entry.seasons.some(function (s) {
+        return s.season_number === nextSeasonNum;
+      });
+      if (!hasSeason) return null;
+
+      try {
+        var nextEps = await getSeasonEpisodes(tmdbId, nextSeasonNum);
+        entry.episodes[nextSeasonNum] = nextEps;
+        if (!nextEps.length) return null;
+        return { season: nextSeasonNum, episode: nextEps[0].number, title: nextEps[0].name };
+      } catch (e) { return null; }
+    }
+
+    return { mount: mount, destroy: destroy, resolveNextEpisode: resolveNextEpisode };
   })();
 
   /* ====================================================================
@@ -2775,6 +2818,8 @@
     var $playerView     = document.getElementById('player-view');
     var $mount          = document.getElementById('player-mount');
     var $closeBtns      = $modal.querySelectorAll('[data-modal-close]');
+    var $nextEpBtn      = document.getElementById('btn-next-ep');
+    var $skipBtn        = document.getElementById('btn-skip-10');
 
     var IFRAME_LOAD_TIMEOUT_MS = 12000;
     var SUPERFLIX_BASE = 'https://superflixapi.online';
@@ -3032,6 +3077,48 @@
     }
 
     /**
+     * Resolve e navega para o próximo episódio.
+     * Se estiver no último ep da temporada, tenta E01 da próxima.
+     * Se for o último da última temporada, é noop.
+     */
+    function goToNextEpisode() {
+      if (!state.currentItem || state.currentItem.mediaType !== 'tv') return;
+      if (state.currentSeason == null || state.currentEpisode == null) return;
+
+      var btn = $nextEpBtn;
+      if (btn) btn.disabled = true;
+
+      SeriesEpisodes.resolveNextEpisode(
+        state.currentItem.tmdbId,
+        state.currentSeason,
+        state.currentEpisode
+      ).then(function (next) {
+        if (!next) return;
+        if (!state.isOpen || !state.currentItem) return;
+        enterPlayerView(next.season, next.episode, next.title);
+      }).catch(function () {}).then(function () {
+        if (btn) btn.disabled = false;
+      });
+    }
+
+    /**
+     * Tenta avançar 10s no vídeo dentro do iframe.
+     * Se o iframe for cross-origin (CORS), esconde o botão silenciosamente.
+     */
+    function skipForward() {
+      if (!state.iframe) return;
+      try {
+        var doc = state.iframe.contentDocument || state.iframe.contentWindow.document;
+        var video = doc.querySelector('video');
+        if (video) {
+          video.currentTime += 10;
+        }
+      } catch (e) {
+        if ($skipBtn) $skipBtn.hidden = true;
+      }
+    }
+
+    /**
      * FASE 8 — Troca o servidor mantendo o S/E atual.
      *
      * Re-cria o iframe com a nova URL. Não dispara HistoryService (não é
@@ -3082,10 +3169,29 @@
       $detailsView.hidden = view !== 'details';
       $playerView.hidden  = view !== 'player';
       $back.hidden = view !== 'player';
-      // Título do header só faz sentido em details (em player aparece o back).
-      $title.textContent = view === 'details'
-        ? (state.currentItem ? state.currentItem.title : 'Detalhes')
-        : 'Player';
+
+      var isPlayer = view === 'player';
+      var isTv = state.currentItem && state.currentItem.mediaType === 'tv';
+      var hasSE = state.currentSeason != null && state.currentEpisode != null;
+
+      if ($nextEpBtn) $nextEpBtn.hidden = !(isPlayer && isTv && hasSE);
+      if ($skipBtn) $skipBtn.hidden = !isPlayer;
+
+      if (view === 'details') {
+        $title.textContent = state.currentItem ? state.currentItem.title : 'Detalhes';
+      } else {
+        var s = state.currentSeason;
+        var e = state.currentEpisode;
+        if (s != null && e != null) {
+          var label = s + 'x' + (e < 10 ? '0' + e : String(e));
+          if (state.currentEpisodeTitle) {
+            label += ' \u2014 ' + state.currentEpisodeTitle;
+          }
+          $title.textContent = label;
+        } else {
+          $title.textContent = state.currentItem ? state.currentItem.title : 'Player';
+        }
+      }
     }
 
     /*
@@ -3185,14 +3291,22 @@
     /* ---- handlers ---- */
 
     function onIframeLoad() {
-      // 'load' do iframe disparou — cancela o timeout e remove o spinner.
       if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
       var loading = $mount.querySelector('.player__loading');
       if (loading) loading.remove();
-      // Observação: por ser cross-origin, NÃO conseguimos inspecionar o
-      // conteúdo do iframe. Se o superflix devolveu uma página de erro,
-      // 'load' ainda dispara. Para detecção fina, só com integração
-      // dedicada da API do player (fora do escopo do MVP).
+
+      // CORS probe: tenta acessar o documento do iframe.
+      // Se bloqueado, esconde o botão +10s (não há como manipular o vídeo).
+      if ($skipBtn && state.iframe) {
+        try {
+          var doc = state.iframe.contentDocument || state.iframe.contentWindow.document;
+          if (!doc || !doc.querySelector('video')) {
+            $skipBtn.hidden = true;
+          }
+        } catch (e) {
+          $skipBtn.hidden = true;
+        }
+      }
     }
 
     function onIframeFail(err) {
@@ -3298,9 +3412,18 @@
      * então não passa pelo AbortController do open().
      */
     $playerView.addEventListener('click', function (e) {
-      var btn = e.target.closest('.player__server');
-      if (!btn || !$playerView.contains(btn)) return;
-      setServer(btn.dataset.server);
+      var serverBtn = e.target.closest('.player__server');
+      if (serverBtn && $playerView.contains(serverBtn)) {
+        setServer(serverBtn.dataset.server);
+        return;
+      }
+      if (e.target.closest('#btn-next-ep')) {
+        goToNextEpisode();
+        return;
+      }
+      if (e.target.closest('#btn-skip-10')) {
+        skipForward();
+      }
     });
 
     // API pública do módulo.

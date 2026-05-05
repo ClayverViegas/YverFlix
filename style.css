@@ -872,8 +872,10 @@ body {
 .modal__back:active { transform: scale(.97); }
 .modal__back[hidden] { display: none; }
 
-/* Quando estamos na view player, escondemos o título (é redundante). */
-.modal--view-player .modal__title { display: none; }
+.modal--view-player .modal__title {
+  font-size: .9rem;
+  min-width: 0;
+}
 .modal--view-player .modal__back { display: inline-flex; }
 
 /* ---- HERO -------------------------------------------------------------- */
@@ -1740,12 +1742,25 @@ body {
 
 /* ---- Server tabs (cima do iframe) -------------------------------------- */
 
+.player__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 6px;
+  background: #000;
+  flex-shrink: 0;
+}
+
 .player__servers {
   display: flex;
   gap: 8px;
-  padding: 10px 14px 6px;
-  background: #000;            /* mesma cor do player body, sem borda */
-  flex-shrink: 0;
+}
+
+.player__actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .player__server {
@@ -1775,6 +1790,66 @@ body {
 .player__server[disabled] {
   opacity: .5;
   cursor: not-allowed;
+}
+
+/* ---- Action buttons (Próximo Episódio, +10s) -------------------------- */
+
+.player__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, .08);
+  color: var(--fg);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+
+.player__action:hover {
+  background: rgba(255, 255, 255, .14);
+  border-color: rgba(255, 255, 255, .2);
+}
+
+.player__action:active { transform: scale(.96); }
+
+.player__action[disabled] {
+  opacity: .45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.player__action[hidden] { display: none; }
+
+.player__action--next svg {
+  flex-shrink: 0;
+}
+
+/* ---- Responsive: ≤768px ----------------------------------------------- */
+
+@media (max-width: 768px) {
+  .player__controls {
+    gap: 6px;
+    padding: 8px 10px 4px;
+  }
+
+  .player__servers { gap: 6px; }
+  .player__actions { gap: 6px; }
+
+  .player__server,
+  .player__action {
+    padding: 5px 10px;
+    font-size: .78rem;
+  }
+
+  .player__action--next span {
+    display: none;
+  }
 }
 
 /* ---- Continuar Assistindo (rail na home) ------------------------------- */

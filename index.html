@@ -329,27 +329,46 @@
                  class="modal__view modal__view--player"
                  aria-label="Player de vídeo"
                  hidden>
-          <div class="player__servers" role="tablist" aria-label="Servidor de vídeo">
-            <button type="button"
-                    role="tab"
-                    class="player__server player__server--active"
-                    id="server-tab-1"
-                    data-server="1"
-                    aria-selected="true">
-              Servidor 1
-            </button>
-            <button type="button"
-                    role="tab"
-                    class="player__server"
-                    id="server-tab-2"
-                    data-server="2"
-                    aria-selected="false">
-              Servidor 2
-            </button>
+          <div class="player__controls" role="toolbar" aria-label="Controles do player">
+            <div class="player__servers" role="tablist" aria-label="Servidor de vídeo">
+              <button type="button"
+                      role="tab"
+                      class="player__server player__server--active"
+                      id="server-tab-1"
+                      data-server="1"
+                      aria-selected="true">
+                Servidor 1
+              </button>
+              <button type="button"
+                      role="tab"
+                      class="player__server"
+                      id="server-tab-2"
+                      data-server="2"
+                      aria-selected="false">
+                Servidor 2
+              </button>
+            </div>
+            <div class="player__actions">
+              <button type="button"
+                      class="player__action player__action--next"
+                      id="btn-next-ep"
+                      hidden>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                  <path d="M5 4l10 8-10 8V4zm11 0v16h2V4h-2z"/>
+                </svg>
+                <span>Próximo</span>
+              </button>
+              <button type="button"
+                      class="player__action player__action--skip"
+                      id="btn-skip-10"
+                      hidden>
+                +10s
+              </button>
+            </div>
           </div>
 
           <div class="modal__body" id="player-mount">
-            <!-- iframe sandbox criado em ContentModal.enterPlayer() -->
+            <!-- iframe criado em ContentModal.enterPlayerView() -->
           </div>
         </section>
       </div>
