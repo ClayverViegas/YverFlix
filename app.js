@@ -2786,7 +2786,7 @@
      */
     var SERVERS = {
       '1': { id: '1', name: 'Servidor 1', build: buildSuperflixUrl },
-      '2': { id: '2', name: 'Servidor 2', build: buildWarezcdnUrl   },
+      '2': { id: '2', name: 'Servidor 2', build: buildVidsrcUrl     },
     };
     var SERVER_PREF_KEY = 'yverflix:server:preference';
 
@@ -2835,22 +2835,19 @@
     }
 
     /**
-     * Server 2 — WarezCDN. Documentação:
-     *   filme: https://embed.warezcdn.com/filme/<TMDB_ID>
-     *   serie: https://embed.warezcdn.com/serie/<TMDB_ID>/<TEMP>/<EP>
-     *
-     * Diferença do Superflix: warezcdn usa PATH segments em vez de query
-     * string pra séries. Sem fallback de S/E (warezcdn precisa dos dois
-     * pra resolver o embed); usamos S1E1 como default seguro.
+     * Server 2 — VidSrc (substituiu WarezCDN, domínio morto).
+     * Docs: https://vidsrc.me/api/
+     *   filme: https://vidsrc-embed.ru/embed/movie/<TMDB_ID>
+     *   série: https://vidsrc-embed.ru/embed/tv/<TMDB_ID>/<SEASON>/<EPISODE>
      */
-    function buildWarezcdnUrl(mediaType, tmdbId, season, episode) {
+    function buildVidsrcUrl(mediaType, tmdbId, season, episode) {
       var id = encodeURIComponent(tmdbId);
       if (mediaType === 'movie') {
-        return 'https://embed.warezcdn.com/filme/' + id;
+        return 'https://vidsrc-embed.ru/embed/movie/' + id;
       }
       var s = season != null ? season : 1;
       var e = episode != null ? episode : 1;
-      return 'https://embed.warezcdn.com/serie/' + id +
+      return 'https://vidsrc-embed.ru/embed/tv/' + id +
              '/' + encodeURIComponent(s) +
              '/' + encodeURIComponent(e);
     }
