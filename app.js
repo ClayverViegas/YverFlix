@@ -2909,15 +2909,10 @@
      * Server 1 — Superflix. Mesma URL da Fase 5/6 (query params).
      */
     function buildSuperflixUrl(mediaType, tmdbId, season, episode) {
-      var pathSegment = mediaType === 'movie' ? 'filme' : 'serie';
-      var url = SUPERFLIX_BASE + '/' + pathSegment + '/' + encodeURIComponent(tmdbId);
-      // Importante: usar `!= null` (e não truthy) para suportar season=0
-      // (TMDB usa 0 para "Especiais"). Episode também pode começar em 0.
-      if (mediaType === 'tv' && season != null && episode != null) {
-        url += '?season=' + encodeURIComponent(season) +
-               '&episode=' + encodeURIComponent(episode);
+      if (mediaType === 'movie') {
+        return SUPERFLIX_BASE + '/filme/' + encodeURIComponent(tmdbId);
       }
-      return url;
+      return 'https://superflixapi.online/serie/' + tmdbId + '?s=' + season + '&e=' + episode;
     }
 
     /**
@@ -3281,8 +3276,9 @@
         onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
       }, IFRAME_LOAD_TIMEOUT_MS);
 
-      iframe.src = buildPlayerUrl(state.currentServer, item.mediaType, item.tmdbId, season, episode);
-      console.log('[Player-Debug] URL Gerada:', iframe.src);
+      var url = buildPlayerUrl(state.currentServer, item.mediaType, item.tmdbId, season, episode);
+      iframe.src = url;
+      console.log('[Player-Fix] Nova URL enviada:', url);
       state.iframe = iframe;
       $mount.appendChild(iframe);
     }
