@@ -2242,68 +2242,12 @@
     function hide() { $section.hidden = true; }
 
     /**
-     * Boot: 1 fetch ao carregar a página. NÃO bloqueia o Trending.
-     * Em paralelo a loadFirstPage / loadGenres.
+     * Boot: registra listener de eventos UMA vez.
+     * O fetch inicial é disparado por onAuthStateChange (INITIAL_SESSION /
+     * SIGNED_IN) pra garantir que getCurrentUserId() já tem o userId real.
      */
     function init() {
-      // Listener registrado UMA vez — já cobre eventos futuros, mesmo
-      // que o fetch inicial falhe.
       window.addEventListener('yverflix:favorites-changed', onChanged);
-
-      var myGen = ++loadGen;
-      Favorites.list()
-        .then(function (rows) {
-          // Last-write-wins: descarta resposta se reload() já
-          // disparou um fetch novo (login persistido chegando via
-          // INITIAL_SESSION durante init).
-          if (myGen !== loadGen) {
-            console.log('[MyList] init() obsoleto (gen', myGen, '!=', loadGen, ') — descartado.');
-            return;
-          }
-          if (!rows.length) {
-            // Só esconde se NENHUM card foi adicionado por addOne()
-            // durante o fetch (race: insert chega depois do snapshot
-            // do SELECT). Sem essa checagem, o item recém-favoritado
-            // some da UI até o próximo F5.
-            if (!$list.children.length) hide();
-            console.log('[MyList] sem favoritos — section hidden.');
-            return;
-          }
-          var frag = document.createDocumentFragment();
-          var allLazy = [];
-          for (var i = 0; i < rows.length; i++) {
-            var item = rowToItem(rows[i]);
-            // Race: se o usuário favoritou DURANTE o fetch inicial,
-            // addOne() já inseriu o card e populou byKey. Agora a row
-            // também volta no resultado do SELECT — pulamos pra não
-            // duplicar o DOM nem sobrescrever byKey (o que deixaria o
-            // primeiro card órfão num removeOne futuro).
-            var dupKey = key(item.type, item.tmdbId);
-            if (byKey[dupKey]) continue;
-            var built = buildCardElement(item);
-            byKey[dupKey] = built.article;
-            frag.appendChild(built.fragment);
-            for (var j = 0; j < built.lazyImgs.length; j++) {
-              allLazy.push(built.lazyImgs[j]);
-            }
-          }
-          $list.appendChild(frag);
-          // Re-observa imagens (fragmento já está em DOM, mas o ref
-          // segue válido). Igual padrão de renderCards.
-          for (var k = 0; k < allLazy.length; k++) {
-            imageObserver.observe(allLazy[k]);
-          }
-          show();
-          console.log('[MyList] carregada com', rows.length, 'favorito(s).');
-        })
-        .catch(function (err) {
-          if (myGen !== loadGen) return;     // resposta obsoleta
-          // Falha aqui não derruba o app — só esconde a seção SE
-          // nenhum card já tiver sido adicionado por addOne() durante
-          // o fetch (mesma race do branch !rows.length acima).
-          console.warn('[MyList] init falhou:', err);
-          if (!$list.children.length) hide();
-        });
     }
 
     function onChanged(e) {
@@ -2416,7 +2360,21 @@
         });
     }
 
-    return { init: init, reload: reload };
+    /**
+     * Limpa o DOM e o índice sem re-fetch. Usado por resetUserInterface()
+     * no SIGNED_OUT pra zerar a UI antes do próximo fetch controlado.
+     */
+    function clear() {
+      ++loadGen;   // invalida qualquer fetch in-flight
+      var imgs = $list.querySelectorAll('img');
+      for (var i = 0; i < imgs.length; i++) imageObserver.unobserve(imgs[i]);
+      $list.replaceChildren();
+      var keys = Object.keys(byKey);
+      for (var k = 0; k < keys.length; k++) delete byKey[keys[k]];
+      hide();
+    }
+
+    return { init: init, reload: reload, clear: clear };
   })();
 
   /* ============================================================
@@ -2681,7 +2639,7 @@
 
     function init() {
       window.addEventListener('yverflix:history-changed', onChanged);
-      fetchAndRender();
+      // Fetch adiado para onAuthStateChange (INITIAL_SESSION/SIGNED_IN).
     }
 
     function fetchAndRender() {
@@ -2800,7 +2758,21 @@
       fetchAndRender();
     }
 
-    return { init: init, reload: reload };
+    /**
+     * Limpa o DOM e o índice sem re-fetch. Usado por resetUserInterface().
+     */
+    function clear() {
+      if (!$section || !$list) return;
+      ++loadGen;
+      var imgs = $list.querySelectorAll('img');
+      for (var i = 0; i < imgs.length; i++) imageObserver.unobserve(imgs[i]);
+      $list.replaceChildren();
+      var keys = Object.keys(byKey);
+      for (var k = 0; k < keys.length; k++) delete byKey[keys[k]];
+      hide();
+    }
+
+    return { init: init, reload: reload, clear: clear };
   })();
 
   /* ----------------------- 5. Content Modal (Fase 6) -------------------- */
@@ -2875,15 +2847,15 @@
     var SERVER_PREF_KEY = 'yverflix:server:preference';
 
     /**
-     * Última escolha do user persistida em localStorage. Default: '1'.
+     * Última escolha do user persistida em localStorage. Default: '2' (VidSrc).
      * Persistir entre sessões evita o user re-trocar toda vez que abre
      * um conteúdo se o Server 2 funcionar melhor pra rede dele.
      */
     function readServerPref() {
       try {
         var v = localStorage.getItem(SERVER_PREF_KEY);
-        return SERVERS[v] ? v : '1';
-      } catch (e) { return '1'; }
+        return SERVERS[v] ? v : '2';
+      } catch (e) { return '2'; }
     }
     function writeServerPref(s) {
       try { localStorage.setItem(SERVER_PREF_KEY, s); } catch (e) { /* private mode */ }
@@ -2906,13 +2878,13 @@
     var openGeneration = 0;
 
     /**
-     * Server 1 — Superflix. Mesma URL da Fase 5/6 (query params).
+     * Server 1 — Superflix. URL encurtada com params em PT-BR e cache buster.
      */
     function buildSuperflixUrl(mediaType, tmdbId, season, episode) {
       if (mediaType === 'movie') {
         return SUPERFLIX_BASE + '/filme/' + encodeURIComponent(tmdbId);
       }
-      return 'https://superflixapi.online/serie/' + tmdbId + '?s=' + season + '&e=' + episode;
+      return 'https://superflixapi.online/serie/' + tmdbId + '?temporada=' + season + '&episodio=' + episode + '&cb=' + Date.now();
     }
 
     /**
@@ -2935,10 +2907,10 @@
 
     /**
      * Dispatcher — escolhe o adapter conforme o server atual.
-     * Server desconhecido cai no Server 1 (defesa contra localStorage corrompido).
+     * Server desconhecido cai no Server 2 (defesa contra localStorage corrompido).
      */
     function buildPlayerUrl(server, mediaType, tmdbId, season, episode) {
-      var s = SERVERS[server] || SERVERS['1'];
+      var s = SERVERS[server] || SERVERS['2'];
       return s.build(mediaType, tmdbId, season, episode);
     }
 
@@ -3278,7 +3250,7 @@
 
       var url = buildPlayerUrl(state.currentServer, item.mediaType, item.tmdbId, season, episode);
       iframe.src = url;
-      console.log('[Player-Fix] Nova URL enviada:', url);
+      console.log('[Player-Success] Link gerado:', url);
       state.iframe = iframe;
       $mount.appendChild(iframe);
     }
@@ -4313,56 +4285,66 @@
   loadGenres();          // chips em paralelo (não bloqueia o grid)
   loadFirstPage();       // primeira página do Trending
   smokeTestSupabase();   // FASE 6.1 — valida conectividade (não bloqueia)
-  MyList.init();         // FASE 6.3 — busca favoritos em paralelo (não bloqueia)
-  ContinueWatching.init(); // FASE 8 — busca top 10 de watch_history em paralelo
+  MyList.init();         // registra listener de favorites-changed (sem fetch)
+  ContinueWatching.init(); // registra listener de history-changed (sem fetch)
   Auth.bind();           // FASE 7.1 — wire-up dos handlers do auth modal
 
   /**
-   * FASE 7.1 — onAuthStateChange é o ÚNICO ponto que sincroniza state
-   * de sessão. Eventos:
-   *   - INITIAL_SESSION: dispara no boot, com session = sessão recuperada
-   *     do localStorage (ou null se nunca logou).
-   *   - SIGNED_IN: signUp/signInWithPassword bem-sucedido.
-   *   - SIGNED_OUT: signOut() bem-sucedido OU JWT expirado.
-   *   - TOKEN_REFRESHED: refresh automático do JWT (não muda user).
-   *   - USER_UPDATED: mudou senha/email pelo update().
+   * Limpa listas do usuário no DOM e state. Chamado no SIGNED_OUT pra
+   * zerar a UI antes de aguardar a próxima resolução de sessão.
+   */
+  function resetUserInterface() {
+    MyList.clear();
+    if (typeof ContinueWatching !== 'undefined' && ContinueWatching.clear) {
+      ContinueWatching.clear();
+    }
+    if (typeof HistoryService !== 'undefined' && HistoryService.invalidate) {
+      HistoryService.invalidate();
+    }
+  }
+
+  /**
+   * FASE 7.1 — onAuthStateChange é o ÚNICO ponto que dispara fetches
+   * de dados do usuário (Favoritos, Continue Watching).
    *
-   * O handler é IDEMPOTENTE — mesmo state aplicado várias vezes não causa
-   * efeitos colaterais. Garante consistência entre tabs (BroadcastChannel
-   * do Supabase JS replica eventos pra outras abas abertas).
+   * init() dos módulos agora SOMENTE registra listeners de eventos
+   * customizados — o fetch inicial acontece aqui, quando a sessão é
+   * confirmada. Isso elimina a race condition onde init() buscava com
+   * o fallback user_teste_123 antes do Supabase resolver a sessão.
+   *
+   * Eventos:
+   *   - INITIAL_SESSION: boot — session = sessão do localStorage ou null.
+   *   - SIGNED_IN: login/signup bem-sucedido.
+   *   - SIGNED_OUT: signOut() ou JWT expirado.
+   *   - TOKEN_REFRESHED: refresh automático (não muda user).
+   *   - USER_UPDATED: mudou senha/email.
    */
   if (supabaseClient) {
     supabaseClient.auth.onAuthStateChange(function (event, session) {
       console.log('[Auth] event:', event, 'user:', session && session.user && session.user.email);
 
-      var prevUserId = currentSession && currentSession.user && currentSession.user.id;
-      var nextUserId = session && session.user && session.user.id;
-
       currentSession = session || null;
-
-      // Atualiza header SEMPRE (idempotente)
       Auth.updateHeaderUI(session);
 
-      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' ||
-          event === 'INITIAL_SESSION') {
-        // Fecha modal de auth se ele estava aberto (login bem-sucedido)
-        if (event === 'SIGNED_IN') Auth.close();
+      if (event === 'SIGNED_IN') {
+        Auth.close();
+      }
 
-        // Se o usuário ATIVO mudou (login, logout, ou troca de conta),
-        // recarrega a Minha Lista com os favoritos do user correto.
-        // Em INITIAL_SESSION com null (sem login persistido) NÃO precisa
-        // — o init() do MyList já rodou com o fallback user_teste_123.
-        // Mas se INITIAL_SESSION trouxe sessão (F5 com login persistido),
-        // precisa recarregar pq o init() rodou ANTES desse handler.
-        if (prevUserId !== nextUserId) {
-          MyList.reload();
-          // FASE 8 — invalida caches do HistoryService + re-fetcha rail.
-          if (typeof HistoryService !== 'undefined' && HistoryService.invalidate) {
-            HistoryService.invalidate();
-          }
-          if (typeof ContinueWatching !== 'undefined' && ContinueWatching.reload) {
-            ContinueWatching.reload();
-          }
+      if (event === 'SIGNED_OUT') {
+        resetUserInterface();
+        return;
+      }
+
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+        // INITIAL_SESSION: primeira resolução de sessão no boot.
+        // SIGNED_IN: login bem-sucedido.
+        // Em ambos, dispara fetch com o userId REAL (ou fallback se null).
+        MyList.reload();
+        if (typeof HistoryService !== 'undefined' && HistoryService.invalidate) {
+          HistoryService.invalidate();
+        }
+        if (typeof ContinueWatching !== 'undefined' && ContinueWatching.reload) {
+          ContinueWatching.reload();
         }
       }
     });
