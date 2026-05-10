@@ -1000,6 +1000,36 @@ body {
   width: 18px; height: 18px;
 }
 
+/* ---- Botão "Continuar Assistindo" (resume) -------------------------- */
+.episodes-section__resume {
+  padding: 0 32px;
+  margin: -4px 0 8px;
+}
+.btn-resume-play {
+  gap: 10px;
+  padding: 12px 28px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  background: linear-gradient(135deg, var(--accent) 0%, #b8070f 100%);
+  border: none;
+  box-shadow: 0 4px 14px rgba(229, 9, 20, .35);
+  transition: transform .15s, box-shadow .15s, background .15s;
+}
+.btn-resume-play:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(229, 9, 20, .45);
+  background: linear-gradient(135deg, #c40811 0%, #a3060d 100%);
+}
+.btn-resume-play:active {
+  transform: scale(.97) translateY(0);
+  box-shadow: 0 2px 8px rgba(229, 9, 20, .3);
+}
+.btn-resume-play .btn__icon {
+  width: 20px; height: 20px;
+  font-size: 1.1rem;
+}
+
 /* ---- Sections genéricas dentro do details ---------------------------- */
 .details-section {
   padding: 18px 32px;
@@ -1152,6 +1182,29 @@ body {
 .ep-card--active .ep-card__num {
   background: var(--accent);
   color: #fff;
+}
+
+/* Episódio já assistido — opacidade reduzida + badge "Visto". */
+.ep-card.is-watched {
+  opacity: .55;
+}
+.ep-card.is-watched .ep-card__thumb::after {
+  content: 'Visto';
+  position: absolute;
+  bottom: 6px; right: 6px;
+  padding: 2px 8px;
+  background: rgba(34, 197, 94, .85);
+  color: #fff;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 1;
+}
+.ep-card.is-watched .ep-card__thumb-img {
+  opacity: .65;
 }
 
 .ep-card__thumb {

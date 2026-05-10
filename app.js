@@ -945,6 +945,7 @@
         $select:   $container.querySelector('.episodes__select'),
         $loading:  $container.querySelector('.episodes-section__loading'),
         $list:     $container.querySelector('.episodes-grid'),
+        $resumeBtn: null,
         onPlay: onPlay,
         // FASE 8 — resume é a temporada/ep que veio do "Continuar Assistindo".
         // Se setado, a UI auto-seleciona a temporada e (se autoplay) dispara
@@ -1174,6 +1175,128 @@
         fragment.appendChild(buildEpisodeCard(ep, activeEpisode));
       });
       $list.appendChild(fragment);
+      applyWatchedState();
+      updateResumeButton();
+    }
+
+    /**
+     * Percorre os cards de episódio renderizados e adiciona a classe
+     * .is-watched naqueles cujo número <= getMaxWatchedEpisode().
+     * Chamado após renderEpisodes() e por refreshWatched().
+     */
+    function applyWatchedState() {
+      if (!current) return;
+      var maxEp = HistoryService.getMaxWatchedEpisode(current.tmdbId, current.currentSeason);
+      if (!maxEp) return;
+      var cards = current.$list.querySelectorAll('.ep-card');
+      for (var i = 0; i < cards.length; i++) {
+        var epNum = parseInt(cards[i].dataset.episode, 10);
+        if (!isNaN(epNum) && epNum <= maxEp) {
+          cards[i].classList.add('is-watched');
+        }
+      }
+    }
+
+    /**
+     * Re-aplica o estado de "assistido" nos cards já renderizados.
+     * Chamado pelo ContentModal ao voltar do player pra details view,
+     * garantindo reatividade sem re-renderizar toda a lista.
+     */
+    function refreshWatched() {
+      if (!current || !current.$list) return;
+      applyWatchedState();
+      updateResumeButton();
+    }
+
+    /**
+     * Calcula o próximo episódio com base no histórico e injetualiza
+     * o botão "Continuar Assistindo" / "Começar a Assistir".
+     *
+     * Lógica:
+     *   1. maxWatched = getMaxWatchedEpisode(tmdbId, seasonAtual)
+     *   2. next = maxWatched + 1
+     *   3. Se next existe na lista atual → mostra botão com "Ep X"
+     *   4. Se next > total de eps da temporada → tenta temporada + 1
+     *   5. Se não há próxima temporada ou ela não está em cache → esconde
+     *
+     * Performance: usa APENAS cache local (getCurrentList + cache[tmdbId]).
+     * Zero fetches de API.
+     */
+    function updateResumeButton() {
+      if (!current) return;
+
+      var slot = current.$container.querySelector('.episodes-section__resume');
+      if (!slot) return;
+
+      // Limpa botão anterior.
+      slot.replaceChildren();
+
+      var tmdbId = current.tmdbId;
+      var season = current.currentSeason;
+      var maxWatched = HistoryService.getMaxWatchedEpisode(tmdbId, season);
+      var nextEp = maxWatched + 1;
+
+      // Verifica se nextEp existe na lista atual (cache quente).
+      var list = getCurrentList();
+      var epExists = list.some(function (ep) { return ep.number === nextEp; });
+
+      var targetSeason = season;
+      var targetEpisode = nextEp;
+      var label;
+
+      if (epExists) {
+        // Próximo episódio na mesma temporada.
+        label = maxWatched === 0
+          ? 'Começar a Assistir'
+          : 'Assistir ao Próximo: Ep ' + nextEp;
+      } else {
+        // NextEp não existe — pode ser que a temporada acabou.
+        // Tenta a próxima temporada SE estiver em cache.
+        var entry = cache[tmdbId];
+        if (!entry) return;
+
+        var nextSeasonNum = season + 1;
+        var hasNextSeason = entry.seasons.some(function (s) {
+          return s.season_number === nextSeasonNum;
+        });
+
+        if (!hasNextSeason) {
+          // Série terminou ou não há próxima temporada.
+          // Se o user já assistiu TODOS os eps da temporada atual,
+          // esconde o botão. Se não assistiu nenhum, mostra "Começar".
+          if (maxWatched === 0) {
+            label = 'Começar a Assistir';
+            targetEpisode = list.length ? list[0].number : 1;
+          } else {
+            return; // esconde o botão
+          }
+        } else {
+          // Próxima temporada existe no catálogo.
+          var nextSeasonEps = entry.episodes[nextSeasonNum];
+          if (!nextSeasonEps || !nextSeasonEps.length) {
+            // Temporada existe mas episódios não estão em cache.
+            // Não fazemos fetch (performance). Esconde.
+            return;
+          }
+          targetSeason = nextSeasonNum;
+          targetEpisode = nextSeasonEps[0].number;
+          label = 'Assistir S' + nextSeasonNum + 'E' + targetEpisode;
+        }
+      }
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn--primary btn-resume-play';
+      btn.innerHTML = '<span class="btn__icon" aria-hidden="true">▶</span>' +
+                      '<span>' + label + '</span>';
+      btn.addEventListener('click', function () {
+        if (current && typeof current.onPlay === 'function') {
+          current.onPlay(targetSeason, targetEpisode, null);
+        }
+      });
+
+      slot.appendChild(btn);
+      current.$resumeBtn = btn;
     }
 
     function buildEpisodeCard(ep, activeEpisode) {
@@ -1307,6 +1430,11 @@
       head.appendChild(selectWrap);
       $container.appendChild(head);
 
+      // Slot para o botão "Continuar Assistindo" (injetado por updateResumeButton).
+      var resumeSlot = document.createElement('div');
+      resumeSlot.className = 'episodes-section__resume';
+      $container.appendChild(resumeSlot);
+
       // Loading inline (visível apenas durante fetch da temporada).
       var loading = document.createElement('div');
       loading.className = 'episodes-section__loading';
@@ -1419,7 +1547,7 @@
       return entry.episodes[current.currentSeason];
     }
 
-    return { mount: mount, destroy: destroy, resolveNextEpisode: resolveNextEpisode, getCurrentList: getCurrentList };
+    return { mount: mount, destroy: destroy, resolveNextEpisode: resolveNextEpisode, getCurrentList: getCurrentList, refreshWatched: refreshWatched };
   })();
 
   /* ====================================================================
@@ -2432,6 +2560,11 @@
     var pendingPayloads = Object.create(null);   // key -> payload
     var sigCache        = Object.create(null);   // key -> last (season,episode) sent
 
+    // Cache em memória do maior episódio assistido por (tmdbId, season).
+    // Atualizado por touch() (síncrono) e getOne() (hidratação do DB).
+    // Shape: { [tmdbId]: { [season]: maxEpisode } }
+    var watchedCache = Object.create(null);
+
     /**
      * Marca um item como "assistido agora". Debounce 500ms + dedupe.
      */
@@ -2453,6 +2586,14 @@
       };
 
       pendingPayloads[k] = payload;
+
+      // Atualiza watchedCache imediatamente (síncrono) pra que a UI
+      // de episódios assistidos reaja sem round-trip ao banco.
+      if (payload.season != null && payload.episode != null) {
+        if (!watchedCache[item.tmdbId]) watchedCache[item.tmdbId] = Object.create(null);
+        var cur = watchedCache[item.tmdbId][payload.season] || 0;
+        if (payload.episode > cur) watchedCache[item.tmdbId][payload.season] = payload.episode;
+      }
 
       // Optimistic UI: ContinueWatching atualiza ANTES do round-trip.
       window.dispatchEvent(new CustomEvent('yverflix:history-changed', {
@@ -2546,8 +2687,30 @@
             console.warn('[History] getOne erro:', res.error);
             return null;
           }
-          return (res.data && res.data[0]) || null;
+          var row = (res.data && res.data[0]) || null;
+          // Hidrata watchedCache com o baseline do DB (maior episódio
+          // persistido). touch() pode ter atualizado depois — por isso
+          // só grava se for MAIOR que o cache atual.
+          if (row && row.season != null && row.episode != null) {
+            if (!watchedCache[tmdbId]) watchedCache[tmdbId] = Object.create(null);
+            var cur = watchedCache[tmdbId][row.season] || 0;
+            if (row.episode > cur) watchedCache[tmdbId][row.season] = row.episode;
+          }
+          return row;
         });
+    }
+
+    /**
+     * Retorna o maior episódio assistido para (tmdbId, season) baseado
+     * no watchedCache em memória. Usado pela renderização de episódios
+     * pra marcar cards com a classe .is-watched.
+     *
+     * @returns {number} maior número de episódio, ou 0 se nenhum.
+     */
+    function getMaxWatchedEpisode(tmdbId, season) {
+      if (!tmdbId || season == null) return 0;
+      var entry = watchedCache[tmdbId];
+      return (entry && entry[season]) || 0;
     }
 
     /**
@@ -2563,9 +2726,11 @@
       for (var j = 0; j < ps.length; j++) delete pendingPayloads[ps[j]];
       var ss = Object.keys(sigCache);
       for (var k = 0; k < ss.length; k++) delete sigCache[ss[k]];
+      var ws = Object.keys(watchedCache);
+      for (var w = 0; w < ws.length; w++) delete watchedCache[ws[w]];
     }
 
-    return { touch: touch, list: list, getOne: getOne, invalidate: invalidate };
+    return { touch: touch, list: list, getOne: getOne, getMaxWatchedEpisode: getMaxWatchedEpisode, invalidate: invalidate };
   })();
   // Expõe pra debugging (igual padrão YverFlix.supabase).
   window.YverFlix = window.YverFlix || {};
@@ -3170,6 +3335,8 @@
       state.view = 'details';
       destroyIframe();
       applyViewClass('details');
+      // Re-ativa marcação de episódios assistidos ao voltar do player.
+      SeriesEpisodes.refreshWatched();
     }
 
     /*
