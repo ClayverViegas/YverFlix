@@ -2570,6 +2570,7 @@
      */
     function touch(item, ctx) {
       if (!item || item.tmdbId == null || !item.mediaType) return;
+      if (!isLoggedIn()) return;
       ctx = ctx || {};
 
       var k = key(item.mediaType, item.tmdbId);
@@ -2650,7 +2651,7 @@
      */
     function list(limit) {
       var supa = getClient();
-      if (!supa) return Promise.resolve([]);
+      if (!supa || !isLoggedIn()) return Promise.resolve([]);
       var lim = limit || 10;
       return supa
         .from(TABLE)
@@ -2674,7 +2675,7 @@
      */
     function getOne(tmdbId, mediaType) {
       var supa = getClient();
-      if (!supa) return Promise.resolve(null);
+      if (!supa || !isLoggedIn()) return Promise.resolve(null);
       return supa
         .from(TABLE)
         .select('season, episode, episode_title')
@@ -2755,8 +2756,18 @@
     var loadGen = 0;
 
     function key(mediaType, tmdbId) { return mediaType + ':' + tmdbId; }
-    function show() { if ($section) $section.hidden = false; }
-    function hide() { if ($section) $section.hidden = true; }
+    function show() {
+      if ($section) {
+        $section.hidden = false;
+        $section.classList.remove('is-hidden');
+      }
+    }
+    function hide() {
+      if ($section) {
+        $section.hidden = true;
+        $section.classList.add('is-hidden');
+      }
+    }
 
     function rowToItem(row) {
       return {
@@ -2803,12 +2814,14 @@
     }
 
     function init() {
+      if ($list) $list.innerHTML = '';
       window.addEventListener('yverflix:history-changed', onChanged);
       // Fetch adiado para onAuthStateChange (INITIAL_SESSION/SIGNED_IN).
     }
 
     function fetchAndRender() {
       if (!$section || !$list) return;
+      if (!isLoggedIn()) { clear(); return; }
 
       var myGen = ++loadGen;
       HistoryService.list(10)
@@ -2845,6 +2858,7 @@
     }
 
     function onChanged(e) {
+      if (!isLoggedIn()) return;
       var d = e && e.detail;
       if (!d || !d.item) return;
       // Aceita 'touched' (only action por enquanto). Futuro: 'cleared'.
@@ -3969,6 +3983,167 @@
     $searchInput.select();
   });
 
+  /* ===== 6.1b Search Suggestions (predictive dropdown) ================== */
+
+  (function initSearchSuggestions() {
+    var $suggestions = document.getElementById('search-suggestions');
+    if (!$searchInput || !$suggestions) return;
+
+    var abortCtrl = null;
+    var gen = 0;
+
+    function hideSuggestions() {
+      $suggestions.hidden = true;
+      $suggestions.innerHTML = '';
+      if (abortCtrl) { abortCtrl.abort(); abortCtrl = null; }
+    }
+
+    function showSuggestions() {
+      $suggestions.hidden = false;
+    }
+
+    function renderItems(items) {
+      $suggestions.innerHTML = '';
+      if (!items.length) {
+        var empty = document.createElement('div');
+        empty.className = 'search-suggestion__empty';
+        empty.textContent = 'Nenhum resultado.';
+        $suggestions.appendChild(empty);
+        showSuggestions();
+        return;
+      }
+
+      var frag = document.createDocumentFragment();
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var row = document.createElement('div');
+        row.className = 'search-suggestion';
+        row.setAttribute('role', 'option');
+        row.dataset.tmdbId = item.tmdbId;
+        row.dataset.mediaType = item.type;
+        row.dataset.posterPath = item.posterPath || '';
+        row.tabIndex = 0;
+
+        var poster = document.createElement('img');
+        poster.className = 'search-suggestion__poster';
+        poster.src = item.posterUrl || '';
+        poster.alt = '';
+        poster.loading = 'lazy';
+        if (!item.posterUrl) poster.style.visibility = 'hidden';
+
+        var info = document.createElement('div');
+        info.className = 'search-suggestion__info';
+
+        var title = document.createElement('span');
+        title.className = 'search-suggestion__title';
+        title.textContent = item.title || 'Sem título';
+
+        var meta = document.createElement('span');
+        meta.className = 'search-suggestion__meta';
+
+        var year = (item.releaseDate || '').slice(0, 4);
+        if (year) {
+          var yearSpan = document.createElement('span');
+          yearSpan.textContent = year;
+          meta.appendChild(yearSpan);
+        }
+
+        var typeTag = document.createElement('span');
+        typeTag.className = 'search-suggestion__type';
+        typeTag.textContent = item.type === 'movie' ? 'Filme' : 'Série';
+        meta.appendChild(typeTag);
+
+        info.appendChild(title);
+        info.appendChild(meta);
+        row.appendChild(poster);
+        row.appendChild(info);
+        frag.appendChild(row);
+      }
+      $suggestions.appendChild(frag);
+      showSuggestions();
+    }
+
+    function fetchSuggestions(query) {
+      if (abortCtrl) { abortCtrl.abort(); }
+      abortCtrl = new AbortController();
+      var myGen = ++gen;
+
+      searchMulti(query, 1, abortCtrl.signal)
+        .then(function (result) {
+          if (myGen !== gen) return;
+          renderItems(result.items.slice(0, 6));
+        })
+        .catch(function (err) {
+          if (myGen !== gen) return;
+          if (err.name === 'AbortError') return;
+          console.warn('[Suggestions] fetch erro:', err);
+          hideSuggestions();
+        });
+    }
+
+    var debouncedFetch = debounce(function (query) {
+      if (!query || query.trim().length < 2) {
+        hideSuggestions();
+        return;
+      }
+      fetchSuggestions(query.trim());
+    }, 300);
+
+    // Input listener para sugestões (separado do debouncedApplyQuery existente).
+    $searchInput.addEventListener('input', function () {
+      debouncedFetch(this.value);
+    });
+
+    // Click em sugestão → abre modal + limpa busca.
+    $suggestions.addEventListener('click', function (e) {
+      var row = e.target.closest('.search-suggestion');
+      if (!row) return;
+
+      ContentModal.open({
+        tmdbId: Number(row.dataset.tmdbId),
+        mediaType: row.dataset.mediaType,
+        title: row.querySelector('.search-suggestion__title').textContent,
+        posterPath: row.dataset.posterPath || null,
+      });
+
+      hideSuggestions();
+      $searchInput.value = '';
+      $searchClear.hidden = true;
+      debouncedApplyQuery.cancel();
+      applyQuery('');
+    });
+
+    // Teclado (Enter/Space) na sugestão.
+    $suggestions.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var row = e.target.closest('.search-suggestion');
+      if (!row) return;
+      e.preventDefault();
+      row.click();
+    });
+
+    // ESC fecha sugestões.
+    $searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        hideSuggestions();
+        debouncedFetch.cancel();
+      }
+    });
+
+    // Fora → fecha sugestões (com delay pra permitir click).
+    document.addEventListener('click', function (e) {
+      if (!$searchForm.contains(e.target)) {
+        hideSuggestions();
+      }
+    });
+
+    // Clear button também fecha sugestões.
+    $searchClear.addEventListener('click', function () {
+      hideSuggestions();
+      debouncedFetch.cancel();
+    });
+  })();
+
   /* ===== 6.2 Genre chips (Fase 4) ====================================== */
 
   /** Renderiza skeletons enquanto os gêneros carregam. */
@@ -4501,13 +4676,18 @@
 
       if (event === 'SIGNED_OUT') {
         resetUserInterface();
+        try { localStorage.removeItem('yverflix-history'); } catch (e) { /* noop */ }
         return;
       }
 
       if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
         // INITIAL_SESSION: primeira resolução de sessão no boot.
         // SIGNED_IN: login bem-sucedido.
-        // Em ambos, dispara fetch com o userId REAL (ou fallback se null).
+        // Em ambos, dispara fetch SOMENTE se houver sessão real.
+        if (!session || !session.user) {
+          resetUserInterface();
+          return;
+        }
         MyList.reload();
         if (typeof HistoryService !== 'undefined' && HistoryService.invalidate) {
           HistoryService.invalidate();

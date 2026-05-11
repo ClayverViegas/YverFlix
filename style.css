@@ -76,7 +76,7 @@ body {
   flex: 0 0 auto;
 }
 .brand__img {
-  height: 32px;
+  height: 56px;
   width: auto;
   display: block;
 }
@@ -141,6 +141,89 @@ body {
   color: #fff;
   background: var(--accent);
   border-color: var(--accent);
+}
+
+/* ---- Search Suggestions (preditive dropdown) -------------------------- */
+.search-suggestions {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; right: 0;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+  max-height: 380px;
+  overflow-y: auto;
+  z-index: 20;
+  overscroll-behavior: contain;
+}
+.search-suggestions[hidden] { display: none; }
+
+.search-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background .12s ease;
+}
+.search-suggestion:hover,
+.search-suggestion:focus-visible {
+  background: var(--bg-elev-2);
+}
+.search-suggestion + .search-suggestion {
+  border-top: 1px solid var(--border);
+}
+
+.search-suggestion__poster {
+  flex-shrink: 0;
+  width: 40px;
+  height: 60px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--bg-elev-2);
+}
+
+.search-suggestion__info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-suggestion__title {
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-suggestion__meta {
+  font-size: .78rem;
+  color: var(--fg-dim);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-suggestion__type {
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.search-suggestion__empty {
+  padding: 20px 14px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-size: .85rem;
 }
 
 /* ---- Page / section -------------------------------------------------- */
@@ -1453,6 +1536,9 @@ body {
   overflow: hidden; clip: rect(0,0,0,0);
   white-space: nowrap; border: 0;
 }
+
+/* is-hidden: esconde seção inteira (inclui título + rail) para anon. */
+.is-hidden { display: none !important; }
 
 @media (max-width: 640px) {
   .modal__fav { width: 36px; height: 36px; margin-right: 4px; }
