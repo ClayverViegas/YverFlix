@@ -72,14 +72,13 @@ body {
 }
 .brand {
   margin: 0;
-  font-size: 1.15rem; font-weight: 700; letter-spacing: .3px;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center;
   flex: 0 0 auto;
 }
-.brand__dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 12px var(--accent);
+.brand__img {
+  height: 32px;
+  width: auto;
+  display: block;
 }
 .brand__accent { color: var(--accent); margin-left: 4px; }
 
