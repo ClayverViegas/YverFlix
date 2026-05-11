@@ -79,21 +79,19 @@
    * desenhadas para uso client-side).
    */
   var CONFIG = Object.freeze({
-    TMDB_API_KEY: 'eb9c4dc18d0ed0f3485b2d9ab0c0aeb0',
-    TMDB_BASE_URL: 'https://api.themoviedb.org/3',
     TMDB_IMG_BASE: 'https://image.tmdb.org/t/p',
-    POSTER_SIZE: 'w342',          // ~342x513px — ideal para cards do grid
-    BACKDROP_SIZE: 'w1280',       // FASE 6 — hero backdrop (acima da dobra)
-    STILL_SIZE: 'w300',           // FASE 6 — thumbnails dos episódios
-    PROFILE_SIZE: 'w185',         // FASE 6 — fotos do elenco
+    POSTER_SIZE: 'w342',
+    BACKDROP_SIZE: 'w1280',
+    STILL_SIZE: 'w300',
+    PROFILE_SIZE: 'w185',
     LANGUAGE: 'pt-BR',
     REGION: 'BR',
-    TIMEOUT_MS: 8000,             // 8s: balanço entre rede ruim e UX
-    RETRY_ATTEMPTS: 1,            // 1 retry para erros transitórios (5xx/timeout)
+    TIMEOUT_MS: 8000,
+    RETRY_ATTEMPTS: 1,
     RETRY_DELAY_MS: 600,
     SKELETON_COUNT: 12,
-    LAZY_ROOT_MARGIN: '200px',    // pré-carrega imgs 200px antes da viewport
-    CAST_LIMIT: 12,               // FASE 6 — máx. atores no carrossel
+    LAZY_ROOT_MARGIN: '200px',
+    CAST_LIMIT: 12,
   });
 
   /* ----------------------- 1.b Supabase (FASE 6.1) ---------------------- */
@@ -315,6 +313,30 @@
    */
 
   /**
+   * Chamada centralizada ao proxy /api/tmdb.
+   * O proxy (api/tmdb.js) recebe `endpoint` como query param e injeta
+   * a API key server-side — nada de chave no client.
+   *
+   * @param {string} endpoint - ex: '/trending/all/week'
+   * @param {Object} [params] - query params extras (page, query, etc.)
+   * @param {AbortSignal} [signal]
+   * @returns {Promise<Object>} JSON da TMDB
+   */
+  async function callTMDBProxy(endpoint, params, signal) {
+    var url = new URL('/api/tmdb', window.location.origin);
+    url.searchParams.set('endpoint', endpoint);
+    if (params) {
+      var keys = Object.keys(params);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (params[k] != null) url.searchParams.set(k, String(params[k]));
+      }
+    }
+    var response = await fetchWithTimeout(url.toString(), { signal: signal });
+    return response.json();
+  }
+
+  /**
    * [Fase 1+4] Busca os "Trending" da TMDB com paginação.
    *
    * @param {number} [page=1]
@@ -322,15 +344,7 @@
    * @returns {Promise<PageResult>}
    */
   async function getTrending(page, signal) {
-    assertApiKey();
-    var url = new URL(CONFIG.TMDB_BASE_URL + '/trending/all/week');
-    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
-    url.searchParams.set('language', CONFIG.LANGUAGE);
-    url.searchParams.set('page', String(page || 1));
-
-    var response = await fetchWithTimeout(url.toString(), { signal: signal });
-    var data = await response.json();
-
+    var data = await callTMDBProxy('/trending/all/week', { page: page || 1 }, signal);
     return {
       items: (data.results || [])
         .filter(function (r) { return r.media_type === 'movie' || r.media_type === 'tv'; })
@@ -350,17 +364,11 @@
    * @returns {Promise<PageResult>}
    */
   async function searchMulti(query, page, signal) {
-    assertApiKey();
-    var url = new URL(CONFIG.TMDB_BASE_URL + '/search/multi');
-    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
-    url.searchParams.set('language', CONFIG.LANGUAGE);
-    url.searchParams.set('query', query);
-    url.searchParams.set('include_adult', 'false');
-    url.searchParams.set('page', String(page || 1));
-
-    var response = await fetchWithTimeout(url.toString(), { signal: signal });
-    var data = await response.json();
-
+    var data = await callTMDBProxy('/search/multi', {
+      query: query,
+      include_adult: 'false',
+      page: page || 1,
+    }, signal);
     return {
       items: (data.results || [])
         .filter(function (r) { return r.media_type === 'movie' || r.media_type === 'tv'; })
@@ -378,23 +386,12 @@
    * @returns {Promise<Array<{id:number,name:string}>>}
    */
   async function getMovieGenres(signal) {
-    assertApiKey();
-    var url = new URL(CONFIG.TMDB_BASE_URL + '/genre/movie/list');
-    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
-    url.searchParams.set('language', CONFIG.LANGUAGE);
-
-    var response = await fetchWithTimeout(url.toString(), { signal: signal });
-    var data = await response.json();
+    var data = await callTMDBProxy('/genre/movie/list', null, signal);
     return data.genres || [];
   }
 
   /**
    * [Fase 4] Filtra filmes por gênero via /discover/movie.
-   *
-   * Por que /discover/movie em vez de /genre/movie/list?
-   * O endpoint /genre/movie/list SÓ retorna a LISTA de gêneros (id+nome).
-   * Para FILTRAR catálogo por um id de gênero, o endpoint correto é
-   * /discover/movie com parâmetro with_genres.
    *
    * @param {number} genreId
    * @param {number} [page=1]
@@ -402,17 +399,12 @@
    * @returns {Promise<PageResult>}
    */
   async function getByGenre(genreId, page, signal) {
-    assertApiKey();
-    var url = new URL(CONFIG.TMDB_BASE_URL + '/discover/movie');
-    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
-    url.searchParams.set('language', CONFIG.LANGUAGE);
-    url.searchParams.set('with_genres', String(genreId));
-    url.searchParams.set('include_adult', 'false');
-    url.searchParams.set('sort_by', 'popularity.desc');
-    url.searchParams.set('page', String(page || 1));
-
-    var response = await fetchWithTimeout(url.toString(), { signal: signal });
-    var data = await response.json();
+    var data = await callTMDBProxy('/discover/movie', {
+      with_genres: genreId,
+      include_adult: 'false',
+      sort_by: 'popularity.desc',
+      page: page || 1,
+    }, signal);
 
     // /discover/movie não retorna media_type — forçamos 'movie' no normalize.
     var items = (data.results || []).map(function (r) {
@@ -431,24 +423,13 @@
   /*
    * FASE 5 — Detalhes de uma série.
    * Endpoint: /tv/{id}
-   * Usado para descobrir o número total de temporadas e a lista de
-   * temporadas disponíveis (com episode_count). Especiais (season 0)
-   * são incluídos.
    */
   async function getTvDetails(id, signal) {
-    assertApiKey();
-    var url = new URL(CONFIG.TMDB_BASE_URL + '/tv/' + encodeURIComponent(id));
-    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
-    url.searchParams.set('language', CONFIG.LANGUAGE);
-
-    var response = await fetchWithTimeout(url.toString(), { signal: signal });
-    var data = await response.json();
+    var data = await callTMDBProxy('/tv/' + id, null, signal);
     return {
       id: data.id,
       name: data.name || data.original_name || '',
       numberOfSeasons: data.number_of_seasons || 0,
-      // Cada temporada: { season_number, name, episode_count }.
-      // Filtramos entradas inválidas (algumas séries antigas devolvem null).
       seasons: (data.seasons || []).filter(function (s) {
         return typeof s.season_number === 'number';
       }).map(function (s) {
@@ -464,25 +445,15 @@
   /*
    * FASE 5 — Episódios de UMA temporada.
    * Endpoint: /tv/{id}/season/{season}
-   * Retorna a lista de episódios já normalizada (number + name).
    */
   async function getSeasonEpisodes(id, seasonNumber, signal) {
-    assertApiKey();
-    var url = new URL(
-      CONFIG.TMDB_BASE_URL + '/tv/' +
-      encodeURIComponent(id) + '/season/' +
-      encodeURIComponent(seasonNumber)
+    var data = await callTMDBProxy(
+      '/tv/' + id + '/season/' + seasonNumber, null, signal
     );
-    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
-    url.searchParams.set('language', CONFIG.LANGUAGE);
-
-    var response = await fetchWithTimeout(url.toString(), { signal: signal });
-    var data = await response.json();
     return (data.episodes || []).map(function (e) {
       return {
         number: e.episode_number,
         name: e.name || ('Episódio ' + e.episode_number),
-        // FASE 6 — campos visuais
         overview: e.overview || '',
         runtime: e.runtime || 0,
         stillUrl: e.still_path
@@ -496,23 +467,12 @@
   /*
    * FASE 6 — Detalhes completos para a tela de "imersivo".
    * Endpoint: /movie/{id} ou /tv/{id}.
-   * Retorna o que é necessário pro hero (backdrop, runtime, géneros,
-   * tagline, sinopse completa, ano, classificação, status).
    */
   async function getDetails(mediaType, id, signal) {
-    assertApiKey();
     var path = mediaType === 'movie' ? '/movie/' : '/tv/';
-    var url = new URL(CONFIG.TMDB_BASE_URL + path + encodeURIComponent(id));
-    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
-    url.searchParams.set('language', CONFIG.LANGUAGE);
-    // append_to_response: classificação etária na MESMA request (uma rede só).
-    url.searchParams.set(
-      'append_to_response',
-      mediaType === 'movie' ? 'release_dates' : 'content_ratings'
-    );
-
-    var response = await fetchWithTimeout(url.toString(), { signal: signal });
-    var data = await response.json();
+    var data = await callTMDBProxy(path + id, {
+      append_to_response: mediaType === 'movie' ? 'release_dates' : 'content_ratings',
+    }, signal);
 
     var isMovie = mediaType === 'movie';
     return {
@@ -528,7 +488,7 @@
       posterUrl: data.poster_path
         ? CONFIG.TMDB_IMG_BASE + '/' + CONFIG.POSTER_SIZE + data.poster_path
         : null,
-      posterPath: data.poster_path || null,  // FASE 6.2 — para gravar no Supabase
+      posterPath: data.poster_path || null,
       releaseDate: (isMovie ? data.release_date : data.first_air_date) || '',
       voteAverage: typeof data.vote_average === 'number' ? data.vote_average : 0,
       runtime: isMovie
@@ -536,7 +496,6 @@
         : ((data.episode_run_time && data.episode_run_time[0]) || 0),
       genres: (data.genres || []).map(function (g) { return g.name; }),
       status: data.status || '',
-      // Apenas para tv:
       numberOfSeasons: data.number_of_seasons || 0,
       numberOfEpisodes: data.number_of_episodes || 0,
       seasons: (data.seasons || []).filter(function (s) {
@@ -548,14 +507,12 @@
           episode_count: s.episode_count || 0,
         };
       }),
-      // Classificação (BR > US > primeiro disponível).
       certification: extractCertification(data, isMovie),
     };
   }
 
   /*
-   * Extrai a classificação etária (rating) priorizando BR e fazendo fallback
-   * para US, depois para o primeiro disponível. Funciona para movie e tv.
+   * Extrai a classificação etária priorizando BR > US > primeiro disponível.
    */
   function extractCertification(data, isMovie) {
     if (isMovie) {
@@ -577,19 +534,11 @@
   }
 
   /*
-   * FASE 6 — Créditos (elenco). Retorna no máx. CAST_LIMIT atores
-   * principais com foto. POR QUÊ limitar: o JSON pode trazer 50+ pessoas
-   * — pesa download e renderização. Limitamos no client após receber.
+   * FASE 6 — Créditos (elenco). Retorna no máx. CAST_LIMIT atores.
    */
   async function getCredits(mediaType, id, signal) {
-    assertApiKey();
     var path = mediaType === 'movie' ? '/movie/' : '/tv/';
-    var url = new URL(CONFIG.TMDB_BASE_URL + path + encodeURIComponent(id) + '/credits');
-    url.searchParams.set('api_key', CONFIG.TMDB_API_KEY);
-    url.searchParams.set('language', CONFIG.LANGUAGE);
-
-    var response = await fetchWithTimeout(url.toString(), { signal: signal });
-    var data = await response.json();
+    var data = await callTMDBProxy(path + id + '/credits', null, signal);
     return (data.cast || [])
       .slice(0, CONFIG.CAST_LIMIT)
       .map(function (p) {
@@ -602,12 +551,6 @@
             : null,
         };
       });
-  }
-
-  function assertApiKey() {
-    if (!CONFIG.TMDB_API_KEY) {
-      throw new Error('TMDB API key ausente em CONFIG.TMDB_API_KEY.');
-    }
   }
 
   /**

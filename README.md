@@ -73,8 +73,9 @@ app.js  (1 arquivo, IIFE)
 
 ## Configuração
 
-A API key da TMDB está em `CONFIG.TMDB_API_KEY` no `app.js`. Para produção,
-mover para um backend (Django) que faça proxy das chamadas.
+A API key da TMDB fica **apenas** no servidor, via variável de ambiente
+`TMDB_API_KEY` (configurada na Vercel). O frontend chama `/api/tmdb`
+(serverless function) que injeta a chave — nada de credencial no client.
 
 ## Decisões técnicas notáveis
 
