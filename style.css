@@ -1296,15 +1296,35 @@ body {
 }
 
 /* ---- Player view: ajustes para a Fase 6 ------------------------------ */
-/* Quando estamos na view player, o body usa a altura toda disponível. */
+
+/* Painel em tela cheia quando player ativo — elimina bordas/scroll. */
+.modal--view-player .modal__panel {
+  width: 100%;
+  max-width: 100%;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+  border: none;
+  overflow: hidden;
+}
+
+/* Header com z-index acima do iframe para fechar/voltar funcionarem. */
+.modal--view-player .modal__header {
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
 .modal--view-player .modal__view--player {
   display: flex;
 }
+
+/* Body do player: flex:1 preeche o espaço restante (header + controls). */
 .modal__view--player .modal__body {
-  flex: 1 1 auto;
-  aspect-ratio: 16 / 9;
+  flex: 1 1 0%;
+  min-height: 0;
   width: 100%;
-  max-height: calc(92vh - 56px); /* desconta header */
+  position: relative;
 }
 
 /* ---- Mobile (≤ 640px) ----------------------------------------------- */
@@ -1333,6 +1353,14 @@ body {
   .modal__back span { display: none; } /* só ícone */
   .cast-item { width: 96px; }
   .cast-photo-wrap { width: 96px; height: 138px; }
+
+  /* Player: header mais compacto no mobile para最大化 o iframe. */
+  .modal--view-player .modal__header {
+    padding: 8px 10px;
+  }
+  .modal--view-player .modal__close {
+    width: 36px; height: 36px;
+  }
 }
 
 /* Reduced motion: desliga fade-ins. */
@@ -1803,6 +1831,8 @@ body {
   padding: 10px 14px 6px;
   background: #000;
   flex-shrink: 0;
+  position: relative;
+  z-index: 5;
 }
 
 .player__servers {

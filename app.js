@@ -2974,7 +2974,7 @@
     var $skipBtn        = document.getElementById('btn-skip-10');
 
     var IFRAME_LOAD_TIMEOUT_MS = 12000;
-    var SUPERFLIX_BASE = 'https://superflixapi.top';
+    var SUPERFLIX_BASE = 'https://superflixapi.online';
 
     /*
      * HOTFIX (pós-Fase 6) — Sandbox REMOVIDO.
