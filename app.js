@@ -3049,10 +3049,9 @@
       if (mediaType === 'movie') {
         return SUPERFLIX_BASE + '/filme/' + encodeURIComponent(tmdbId);
       }
-      return SUPERFLIX_BASE + '/api/serie/tmdb/' + encodeURIComponent(tmdbId) +
-             '?temporada=' + encodeURIComponent(season || 1) +
-             '&episodio=' + encodeURIComponent(episode || 1) +
-             '&audio=dub&cb=' + Date.now();
+      return SUPERFLIX_BASE + '/serie/' + encodeURIComponent(tmdbId) +
+             '/' + encodeURIComponent(season || 1) +
+             '/' + encodeURIComponent(episode || 1);
     }
 
     /**
