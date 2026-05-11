@@ -2974,7 +2974,7 @@
     var $skipBtn        = document.getElementById('btn-skip-10');
 
     var IFRAME_LOAD_TIMEOUT_MS = 12000;
-    var SUPERFLIX_BASE = 'https://superflixapi.online';
+    var SUPERFLIX_BASE = 'https://superflixapi.top';
 
     /*
      * HOTFIX (pós-Fase 6) — Sandbox REMOVIDO.
@@ -3049,7 +3049,10 @@
       if (mediaType === 'movie') {
         return SUPERFLIX_BASE + '/filme/' + encodeURIComponent(tmdbId);
       }
-      return 'https://superflixapi.online/serie/' + tmdbId + '?temporada=' + season + '&episodio=' + episode + '&cb=' + Date.now();
+      return SUPERFLIX_BASE + '/api/serie/tmdb/' + encodeURIComponent(tmdbId) +
+             '?temporada=' + encodeURIComponent(season || 1) +
+             '&episodio=' + encodeURIComponent(episode || 1) +
+             '&audio=dub&cb=' + Date.now();
     }
 
     /**
