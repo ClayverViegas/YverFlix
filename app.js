@@ -2935,7 +2935,7 @@
     var $skipBtn        = document.getElementById('btn-skip-10');
 
     var IFRAME_LOAD_TIMEOUT_MS = 12000;
-    var SUPERFLIX_BASE = 'https://superflixapi.online';
+    var SUPERFLIX_BASE = 'https://superflixapi.best';
 
     /*
      * HOTFIX (pós-Fase 6) — Sandbox REMOVIDO.
@@ -3362,8 +3362,11 @@
       var iframe = document.createElement('iframe');
       iframe.className = 'player__iframe';
       iframe.title = 'Player de vídeo — ' + (item.title || 'mídia');
-      iframe.setAttribute('allow', 'autoplay; fullscreen *; encrypted-media; picture-in-picture');
-      iframe.setAttribute('allowfullscreen', '');
+      // Configuração oficial exigida pela API para evitar bloqueios de CDN e Nested Iframes
+      iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write; accelerometer; gyroscope; web-share');
+      iframe.setAttribute('allowfullscreen', 'true');
+      iframe.setAttribute('webkitallowfullscreen', 'true');
+      iframe.setAttribute('mozallowfullscreen', 'true');
       iframe.referrerPolicy = 'no-referrer';
 
       // HOTFIX: sandbox removido — Superflix detecta o atributo e redireciona
