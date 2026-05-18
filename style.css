@@ -2073,3 +2073,52 @@ body {
  * relativa no card existente (já é position: relative pelo .card__poster).
  */
 .continue-card .card__poster-wrap { position: relative; }
+
+/* ==========================================================================
+   ESCUDO ANTI-CLICKJACKING (ANTI-AD OVERLAY LAYER)
+   ========================================================================== */
+.player__barrier {
+    position: absolute;
+    inset: 0;
+    z-index: 20; /* Fica acima do iframe que está no z-index padrão */
+    background-color: rgba(0, 0, 0, 0.75); /* Escurece o player levemente */
+    backdrop-filter: blur(4px); /* Blur elegante de fundo */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.player__barrier-content {
+    text-align: center;
+    color: #fff;
+    font-family: sans-serif;
+    pointer-events: none; /* Garante que o clique passe direto para a div pai */
+    animation: pulseBarrier 2s infinite ease-in-out;
+}
+
+.player__barrier-icon {
+    font-size: 42px;
+    margin-bottom: 12px;
+    display: block;
+}
+
+.player__barrier-title {
+    font-size: 18px;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+}
+
+.player__barrier-text {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    display: block;
+}
+
+@keyframes pulseBarrier {
+    0%, 100% { opacity: 0.9; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.02); }
+}

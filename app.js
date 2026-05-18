@@ -2980,8 +2980,8 @@
     function readServerPref() {
       try {
         var v = localStorage.getItem(SERVER_PREF_KEY);
-        return SERVERS[v] ? v : '2';
-      } catch (e) { return '2'; }
+        return SERVERS[v] ? v : '1';
+      } catch (e) { return '1'; }
     }
     function writeServerPref(s) {
       try { localStorage.setItem(SERVER_PREF_KEY, s); } catch (e) { /* private mode */ }
@@ -3383,6 +3383,32 @@
       console.log('[Player-Success] Link gerado:', url);
       state.iframe = iframe;
       $mount.appendChild(iframe);
+
+      // Criação do Escudo Protetor Anti-Anúncio (Fase de Blindagem)
+      var barrier = document.createElement('div');
+      barrier.className = 'player__barrier';
+      barrier.setAttribute('role', 'button');
+      barrier.setAttribute('aria-label', 'Ativar Player com Proteção');
+
+      barrier.innerHTML =
+        '<div class="player__barrier-content">' +
+          '<span class="player__barrier-icon" aria-hidden="true">🛡️</span>' +
+          '<span class="player__barrier-title">Clique para Liberar o Player</span>' +
+          '<span class="player__barrier-text">(Proteção Anti-PopUp Ativa)</span>' +
+        '</div>';
+
+      // O primeiro clique limpa a barreira e expõe o player real sem disparar anúncios
+      barrier.addEventListener('click', function () {
+        barrier.style.opacity = '0';
+        barrier.style.visibility = 'hidden';
+        setTimeout(function () {
+          if (barrier.parentNode) {
+            barrier.parentNode.removeChild(barrier);
+          }
+        }, 300); // Aguarda o fade-out do CSS terminar para dropar do DOM
+      });
+
+      $mount.appendChild(barrier);
     }
 
     /*
