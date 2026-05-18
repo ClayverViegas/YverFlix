@@ -3547,23 +3547,64 @@
     }
 
     /**
+     * FASE 9.1 — Toast de diagnóstico nativo.
+     * Renderiza um alerta visual no DOM quando o browser bloqueia o fullscreen,
+     * contornando o anti-devtools do player de terceiros.
+     */
+    function showDiagnosticAlert(message) {
+      var existing = document.getElementById('diag-toast');
+      if (existing) existing.remove();
+
+      var toast = document.createElement('div');
+      toast.id = 'diag-toast';
+      toast.style.cssText =
+        'position:fixed; bottom:20px; left:50%; transform:translateX(-50%);' +
+        'background:rgba(255,0,0,0.9); color:white; padding:15px 25px;' +
+        'border-radius:8px; z-index:99999; font-family:sans-serif;' +
+        'font-size:14px; box-shadow:0 4px 15px rgba(0,0,0,0.5);' +
+        'text-align:center; pointer-events:none;';
+      toast.innerHTML = '<strong>\u{1F6A8} Alerta de Fullscreen:</strong><br>' + message;
+      document.body.appendChild(toast);
+
+      setTimeout(function () {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 8000);
+    }
+
+    /**
      * FASE 9 — Fullscreen nativo sobre o iframe.
      * Contorna scripts corrompidos de anúncios de terceiros que quebram
      * a API de fullscreen DENTRO do iframe. Aplicamos requestFullscreen
      * diretamente no elemento <iframe> a partir do nosso DOM principal.
+     * Captura erros síncronos e assíncronos (Promise) para diagnóstico.
      */
     function toggleIframeFullscreen() {
       var iframe = $mount.querySelector('.player__iframe');
-      if (!iframe) return;
+      if (!iframe) {
+        showDiagnosticAlert('Iframe do player n\u00e3o foi encontrado no DOM.');
+        return;
+      }
 
       var isFs = document.fullscreenElement ||
                  document.webkitFullscreenElement ||
                  document.mozFullScreenElement;
 
       if (!isFs) {
-        if (iframe.requestFullscreen)          { iframe.requestFullscreen(); }
-        else if (iframe.webkitRequestFullscreen) { iframe.webkitRequestFullscreen(); }
-        else if (iframe.mozRequestFullScreen)    { iframe.mozRequestFullScreen(); }
+        try {
+          var promise;
+          if (iframe.requestFullscreen)          { promise = iframe.requestFullscreen(); }
+          else if (iframe.webkitRequestFullscreen) { promise = iframe.webkitRequestFullscreen(); }
+          else if (iframe.mozRequestFullScreen)    { promise = iframe.mozRequestFullScreen(); }
+
+          // Captura erro assíncrono em browsers modernos
+          if (promise && typeof promise.catch === 'function') {
+            promise.catch(function (err) {
+              showDiagnosticAlert('Promise rejeitada pelo browser: ' + (err.message || err));
+            });
+          }
+        } catch (e) {
+          showDiagnosticAlert('Exce\u00e7\u00e3o s\u00edncrona disparada: ' + e.message);
+        }
       } else {
         if (document.exitFullscreen)          { document.exitFullscreen(); }
         else if (document.webkitExitFullscreen) { document.webkitExitFullscreen(); }
@@ -3669,8 +3710,17 @@
     });
 
     // API pública do módulo.
-    return { open: open, close: close };
+    return { open: open, close: close, _showDiag: showDiagnosticAlert };
   })();
+
+  // Listener global para capturar rejeições assíncronas delegadas do motor do browser.
+  // Evento disparado quando o browser nega fullscreen por qualquer motivo
+  // (CORS, hierarquia de documentos, falta de user gesture, Permissions Policy).
+  document.addEventListener('fullscreenerror', function (e) {
+    if (ContentModal && ContentModal._showDiag) {
+      ContentModal._showDiag('Evento "fullscreenerror" disparado pelo motor do navegador.');
+    }
+  }, true);
 
   /* ==========================================================================
      6. Bootstrap (Fase 4 — estado unificado + paginação + infinite scroll)
