@@ -2759,6 +2759,7 @@
     }
 
     function init() {
+      hide();   // FASE 7.2 — seção começa oculta; só aparece após fetch autenticado.
       if ($list) $list.innerHTML = '';
       window.addEventListener('yverflix:history-changed', onChanged);
       // Fetch adiado para onAuthStateChange (INITIAL_SESSION/SIGNED_IN).
@@ -2766,7 +2767,8 @@
 
     function fetchAndRender() {
       if (!$section || !$list) return;
-      if (!isLoggedIn()) { clear(); return; }
+      // FASE 7.2 — Blindagem: anônimo não deve ver carrossel nem invocar HistoryService.
+      if (!isLoggedIn()) { clear(); hide(); return; }
 
       var myGen = ++loadGen;
       HistoryService.list(10)
