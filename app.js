@@ -1919,29 +1919,25 @@
   /* ----------------------- 4.4.0 Session helper (FASE 7.1) -------------- */
 
   /**
-   * FASE 7.1 — Sessão atual + identificação do usuário "ativo" para
-   * persistência (tabela `favorites`).
+   * FASE 7.2 — Sessão atual + identificação do usuário "ativo" para
+   * persistência (tabela `favorites`, `watch_history`).
    *
-   * Por que um helper centralizado:
-   *   - ANTES (Fase 6.x): const USER_ID hardcoded em vários pontos.
-   *   - AGORA: cada chamada que escreve/lê do banco usa getCurrentUserId(),
-   *     que devolve o session.user.id REAL quando logado, ou um fallback
-   *     'user_teste_123' quando deslogado (pra manter compat com testes
-   *     legados sem auth — favoritos anônimos seguem funcionando).
-   *   - Próxima fase (7.2): trocar `USING (true)` por `auth.uid() = user_id`
-   *     no RLS, e remover o fallback (anônimo deixa de favoritar).
+   * Helper centralizado:
+   *   - getCurrentUserId() devolve o session.user.id REAL quando logado,
+   *     ou null quando deslogado (sem fallback anônimo).
+   *   - isLoggedIn() é o guard usado por toggle/touch pra interceptar
+   *     usuários anônimos e direcionar ao modal de login.
    *
    * `currentSession` é populada pelo handler de `onAuthStateChange`. Antes
-   * dele rodar (boot inicial), permanece null e o getter usa o fallback.
+   * dele rodar (boot inicial), permanece null.
    */
-  var FALLBACK_USER_ID = 'user_teste_123';
   var currentSession = null;
 
   function getCurrentUserId() {
     if (currentSession && currentSession.user && currentSession.user.id) {
       return currentSession.user.id;
     }
-    return FALLBACK_USER_ID;
+    return null;
   }
 
   function isLoggedIn() {
@@ -2079,6 +2075,12 @@
     function toggle() {
       var supa = getClient();
       if (!supa || !currentItem) return;
+
+      // FASE 7.2 — Login gate: anônimo não pode favoritar.
+      if (!isLoggedIn()) {
+        Auth.open();
+        return;
+      }
 
       var item = currentItem;
       var wasActive = $btn.classList.contains('modal__fav--active');
@@ -2263,8 +2265,8 @@
      * FASE 7.1 — Mesmo padrão do `latestReqId` no Favorites: contador
      * monotônico que invalida resultados de fetches obsoletos.
      *
-     * Cenário: F5 com sessão persistida → init() dispara fetch com
-     * fallback `user_teste_123` (currentSession ainda null). Logo após,
+     * Cenário: F5 com sessão persistida → init() pode tentar fetch antes
+     * do Supabase resolver a sessão (currentSession ainda null). Logo após,
      * INITIAL_SESSION chega → reload() limpa DOM e dispara fetch do
      * user real. Sem versionamento, o `.then()` lento do init() chega
      * DEPOIS e injeta favoritos do user errado mascarando os corretos.
@@ -3358,8 +3360,8 @@
       var iframe = document.createElement('iframe');
       iframe.className = 'player__iframe';
       iframe.title = 'Player de vídeo — ' + (item.title || 'mídia');
-      iframe.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
-      iframe.allowFullscreen = true;
+      iframe.setAttribute('allow', 'autoplay; fullscreen *; encrypted-media; picture-in-picture');
+      iframe.setAttribute('allowfullscreen', '');
       iframe.referrerPolicy = 'no-referrer';
 
       // HOTFIX: sandbox removido — Superflix detecta o atributo e redireciona
@@ -4596,8 +4598,8 @@
    *
    * init() dos módulos agora SOMENTE registra listeners de eventos
    * customizados — o fetch inicial acontece aqui, quando a sessão é
-   * confirmada. Isso elimina a race condition onde init() buscava com
-   * o fallback user_teste_123 antes do Supabase resolver a sessão.
+   * confirmada. Sem sessão real (null), getCurrentUserId() retorna null
+   * e a UI é limpa via resetUserInterface().
    *
    * Eventos:
    *   - INITIAL_SESSION: boot — session = sessão do localStorage ou null.
