@@ -3218,6 +3218,7 @@
       watchTimerId = setInterval(function () {
         if (document.visibilityState === 'visible') {
           currentProgressSeconds++;
+          console.log('[Tracker] Tempo acumulado:', currentProgressSeconds);
         }
       }, 1000);
     }
@@ -3233,12 +3234,12 @@
 
     /**
      * Persiste o progresso atual no Supabase via HistoryService.
-     * Chamado no fechamento do modal, beforeunload e visibilitychange(hidden).
+     * NÃO para o tracker — use stopProgressTracker() separadamente
+     * quando o tracker de fato deve morrer (destroyIframe / close).
      *
      * @param {boolean} [force=false] - true = flush síncrono (bypass debounce)
      */
     function saveCurrentProgress(force) {
-      stopProgressTracker();
       if (currentProgressSeconds <= 5) return;
       if (!state.currentItem) return;
       if (typeof HistoryService === 'undefined' || !HistoryService.touch) return;
@@ -3581,6 +3582,8 @@
     function destroyIframe() {
       // Salva progresso antes de destruir (flush síncrono).
       saveCurrentProgress(true);
+      // Agora sim para o tracker — saveCurrentProgress não o mata mais.
+      stopProgressTracker();
 
       if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
       if (state.iframe) {
@@ -3601,6 +3604,9 @@
       // 1) Desliga listeners + cancela requests + destrói iframe.
       if (state.cleanups) { state.cleanups.abort(); state.cleanups = null; }
       destroyIframe();
+
+      // 1.1) Reseta acumulador do tracker pra não vazar pra próxima sessão.
+      currentProgressSeconds = 0;
 
       // 2) Cleanup do DetailsView (que cleanup-a SeriesEpisodes em cascata).
       try { DetailsView.destroy(); } catch (e) { /* noop */ }
