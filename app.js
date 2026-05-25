@@ -2512,8 +2512,13 @@
 
     /**
      * Marca um item como "assistido agora". Debounce 500ms + dedupe.
+     *
+     * @param {Object}      item         - { tmdbId, mediaType, title, posterPath }
+     * @param {Object}      [ctx]        - { season, episode, episodeTitle }
+     * @param {Object}      [progressData] - { progressSeconds, durationSeconds }
+     * @param {boolean}     [forceFlush] - true = flush síncrono, bypass debounce
      */
-    function touch(item, ctx) {
+    function touch(item, ctx, progressData, forceFlush) {
       if (!item || item.tmdbId == null || !item.mediaType) return;
       if (!isLoggedIn()) return;
       ctx = ctx || {};
@@ -2531,6 +2536,14 @@
         updated_at: new Date().toISOString(),
       };
 
+      // Progresso temporal: só inclui no payload quando explicitamente
+      // fornecido. Math.floor garante inteiros válidos; fallback pra 0
+      // se o campo vier undefined/null/NaN.
+      if (progressData) {
+        payload.progress_seconds = Math.floor(Number(progressData.progressSeconds)) || 0;
+        payload.duration_seconds = Math.floor(Number(progressData.durationSeconds)) || 0;
+      }
+
       pendingPayloads[k] = payload;
 
       // Atualiza watchedCache imediatamente (síncrono) pra que a UI
@@ -2542,21 +2555,39 @@
       }
 
       // Optimistic UI: ContinueWatching atualiza ANTES do round-trip.
-      window.dispatchEvent(new CustomEvent('yverflix:history-changed', {
-        detail: {
-          action: 'touched',
-          item: {
-            tmdbId: item.tmdbId,
-            mediaType: item.mediaType,
-            title: item.title || null,
-            posterPath: item.posterPath || null,
-            season: payload.season,
-            episode: payload.episode,
-            episodeTitle: payload.episode_title,
-            updatedAt: payload.updated_at,
-          },
+      var eventDetail = {
+        action: 'touched',
+        item: {
+          tmdbId: item.tmdbId,
+          mediaType: item.mediaType,
+          title: item.title || null,
+          posterPath: item.posterPath || null,
+          season: payload.season,
+          episode: payload.episode,
+          episodeTitle: payload.episode_title,
+          updatedAt: payload.updated_at,
         },
+      };
+      if (progressData) {
+        eventDetail.item.progressSeconds = payload.progress_seconds;
+        eventDetail.item.durationSeconds = payload.duration_seconds;
+      }
+      window.dispatchEvent(new CustomEvent('yverflix:history-changed', {
+        detail: eventDetail,
       }));
+
+      // forceFlush: bypass debounce e flush síncrono imediato.
+      // Usado no fechamento do modal/player pra não perder progresso
+      // numa saída brusca do usuário (beforeunload, etc).
+      if (forceFlush) {
+        if (pendingTimers[k]) {
+          clearTimeout(pendingTimers[k]);
+          delete pendingTimers[k];
+        }
+        delete pendingPayloads[k];
+        flush(k, payload, true);
+        return;
+      }
 
       if (pendingTimers[k]) clearTimeout(pendingTimers[k]);
       pendingTimers[k] = setTimeout(function () {
@@ -2567,16 +2598,19 @@
       }, DEBOUNCE_MS);
     }
 
-    function flush(k, payload) {
+    function flush(k, payload, force) {
       var supa = getClient();
       if (!supa || !payload) return;
 
       // Dedupe semântico: se nada mudou (mesma S/E), skip o upsert.
-      var sig = sigCache[k];
-      if (sig && sig.season === payload.season && sig.episode === payload.episode) {
-        // updated_at ficaria 1-2s mais novo, mas a UI já reflete o estado.
-        // Pular evita pressionar o banco em zapping de UI.
-        return;
+      // Ignorado quando force=true (ex: flush de progresso no fechamento).
+      if (!force) {
+        var sig = sigCache[k];
+        if (sig && sig.season === payload.season && sig.episode === payload.episode) {
+          // updated_at ficaria 1-2s mais novo, mas a UI já reflete o estado.
+          // Pular evita pressionar o banco em zapping de UI.
+          return;
+        }
       }
       sigCache[k] = { season: payload.season, episode: payload.episode };
 
@@ -2600,7 +2634,7 @@
       var lim = limit || 10;
       return supa
         .from(TABLE)
-        .select('id, user_id, tmdb_id, media_type, title, poster_path, season, episode, episode_title, updated_at')
+        .select('id, user_id, tmdb_id, media_type, title, poster_path, season, episode, episode_title, progress_seconds, duration_seconds, updated_at')
         .eq('user_id', getCurrentUserId())
         .order('updated_at', { ascending: false })
         .limit(lim)
@@ -2616,14 +2650,14 @@
     /**
      * Busca a última entrada de watch_history para (tmdbId, mediaType).
      * Usado pelo ContentModal pra hidratar o S/E ao abrir séries da Home.
-     * @returns {Promise<{season:number, episode:number}|null>}
+     * @returns {Promise<{season:number, episode:number, progress_seconds:number}|null>}
      */
     function getOne(tmdbId, mediaType) {
       var supa = getClient();
       if (!supa || !isLoggedIn()) return Promise.resolve(null);
       return supa
         .from(TABLE)
-        .select('season, episode, episode_title')
+        .select('season, episode, episode_title, progress_seconds')
         .eq('user_id', getCurrentUserId())
         .eq('tmdb_id', tmdbId)
         .eq('media_type', mediaType)
@@ -3003,6 +3037,11 @@
 
     var openGeneration = 0;
 
+    // FASE 8.1 — Cronômetro de engajamento (viewport ativa).
+    var watchTimerId = null;
+    var currentProgressSeconds = 0;
+    var isWatching = false;
+
     /**
      * Server 1 — Superflix. URL encurtada com params em PT-BR e cache buster.
      */
@@ -3089,6 +3128,18 @@
       });
       $back.addEventListener('click', enterDetailsView, { signal: sig });
 
+      // 4.1) FASE 8.1 — Salva progresso em eventos de ciclo de vida do
+      //      navegador. beforeunload cobre F5/cmd+W; visibilitychange
+      //      cobre troca de aba. Ambos limpam via AbortSignal do modal.
+      window.addEventListener('beforeunload', function () {
+        saveCurrentProgress(true);
+      }, { signal: sig });
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden' && state.view === 'player') {
+          saveCurrentProgress(true);
+        }
+      }, { signal: sig });
+
       // 5) Para séries sem resume explícito, consulta watch_history antes
       //    de montar o DetailsView. A query é indexada (user_id, tmdb_id,
       //    media_type) e resolve em ~50-100ms — o modal já está visível
@@ -3096,8 +3147,12 @@
       var myGen = ++openGeneration;
 
       var mountDetails = function (resolved) {
+        var resumeProgress = resolved.resumeProgress || 0;
+
         DetailsView.mount(item, $detailsContent, $detailsLoading, function (season, episode, episodeTitle) {
-          enterPlayerView(season, episode, episodeTitle);
+          enterPlayerView(season, episode, episodeTitle, resumeProgress);
+          // Reseta pra 0 — só o primeiro play herda o progresso do banco.
+          resumeProgress = 0;
         }, resolved);
 
         // 6) FASE 6.2 — liga o botão de favoritos ao item atual.
@@ -3107,7 +3162,7 @@
         //    Continuar Assistindo). Para séries, o autoplay é aplicado
         //    pelo SeriesEpisodes quando a temporada carrega.
         if (resolved.autoplay && item.mediaType === 'movie') {
-          enterPlayerView(null, null, null);
+          enterPlayerView(null, null, null, resumeProgress);
         }
       };
 
@@ -3128,6 +3183,7 @@
             if (row && row.season != null && row.episode != null) {
               resolved.resumeSeason = row.season;
               resolved.resumeEpisode = row.episode;
+              resolved.resumeProgress = row.progress_seconds || 0;
             }
 
             mountDetails(resolved);
@@ -3147,6 +3203,100 @@
       }, 0);
     }
 
+    /* ---- Progress Tracker (engajamento de viewport) ---- */
+
+    /**
+     * Inicia o cronômetro de engajamento. Incrementa currentProgressSeconds
+     * a cada 1s SOMENTE quando a aba está visível (document.visibilityState).
+     *
+     * @param {number} [initialSeconds=0] - valor hidratado do banco (progress_seconds)
+     */
+    function startProgressTracker(initialSeconds) {
+      stopProgressTracker();
+      currentProgressSeconds = initialSeconds || 0;
+      isWatching = true;
+      watchTimerId = setInterval(function () {
+        if (document.visibilityState === 'visible') {
+          currentProgressSeconds++;
+        }
+      }, 1000);
+    }
+
+    /** Para o cronômetro sem salvar. */
+    function stopProgressTracker() {
+      if (watchTimerId) {
+        clearInterval(watchTimerId);
+        watchTimerId = null;
+      }
+      isWatching = false;
+    }
+
+    /**
+     * Persiste o progresso atual no Supabase via HistoryService.
+     * Chamado no fechamento do modal, beforeunload e visibilitychange(hidden).
+     *
+     * @param {boolean} [force=false] - true = flush síncrono (bypass debounce)
+     */
+    function saveCurrentProgress(force) {
+      stopProgressTracker();
+      if (currentProgressSeconds <= 5) return;
+      if (!state.currentItem) return;
+      if (typeof HistoryService === 'undefined' || !HistoryService.touch) return;
+
+      HistoryService.touch(
+        state.currentItem,
+        {
+          season: state.currentSeason,
+          episode: state.currentEpisode,
+          episodeTitle: state.currentEpisodeTitle,
+        },
+        {
+          progressSeconds: currentProgressSeconds,
+          durationSeconds: 0,
+        },
+        !!force
+      );
+    }
+
+    /**
+     * Renderiza um toast de UX informando o último ponto de assistido.
+     * Auto-remove após 6 segundos.
+     *
+     * @param {number} seconds - progress_seconds do banco
+     */
+    function showResumeToast(seconds) {
+      if (!seconds || seconds <= 0) return;
+
+      var h = Math.floor(seconds / 3600);
+      var m = Math.floor((seconds % 3600) / 60);
+      var s = seconds % 60;
+      var timeStr = h > 0
+        ? h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s
+        : m + ':' + (s < 10 ? '0' : '') + s;
+
+      var toast = document.createElement('div');
+      toast.className = 'resume-toast';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      toast.innerHTML =
+        '<span class="resume-toast__icon" aria-hidden="true">\u23F1\uFE0F</span>' +
+        '<span class="resume-toast__text">Voc\u00EA parou aos <strong>' + timeStr + '</strong> da \u00FAltima vez. Avance o player para continuar.</span>';
+
+      // Injeta no body pra não ser afetado pelo overflow:hidden do modal.
+      document.body.appendChild(toast);
+
+      // Força reflow antes de adicionar a classe de entrada (transição CSS).
+      void toast.offsetWidth;
+      toast.classList.add('resume-toast--visible');
+
+      setTimeout(function () {
+        toast.classList.remove('resume-toast--visible');
+        setTimeout(function () {
+          if (toast.parentNode) toast.parentNode.removeChild(toast);
+        }, 400); // aguarda fade-out CSS
+      }, 6000);
+    }
+
     /*
      * FASE 6 — Alterna para a view do player e cria o iframe.
      * FASE 8 — também grava no watch_history (debounced no HistoryService).
@@ -3155,8 +3305,9 @@
      * @param {number|null} episode        null para filmes
      * @param {string|null} episodeTitle   título do ep ("Pilot"); usado pra UI
      *                                     do "Continuar Assistindo".
+     * @param {number}      [initialProgress=0] - progress_seconds do banco
      */
-    function enterPlayerView(season, episode, episodeTitle) {
+    function enterPlayerView(season, episode, episodeTitle, initialProgress) {
       if (!state.isOpen || !state.currentItem) return;
 
       state.view = 'player';
@@ -3179,6 +3330,15 @@
           episode: episode,
           episodeTitle: episodeTitle || null,
         });
+      }
+
+      // FASE 8.1 — Inicia tracker de engajamento a partir do último
+      // progresso salvo no banco (ou 0 se não houver).
+      startProgressTracker(initialProgress);
+
+      // Toast de UX: informa o usuário do ponto de retomada.
+      if (initialProgress > 0) {
+        showResumeToast(initialProgress);
       }
 
       // Foco no botão Voltar (acessibilidade — user pode pressionar Enter
@@ -3419,6 +3579,9 @@
      * do close() da Fase 5 — extraído pra ser reusado por enterDetailsView.
      */
     function destroyIframe() {
+      // Salva progresso antes de destruir (flush síncrono).
+      saveCurrentProgress(true);
+
       if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
       if (state.iframe) {
         // src=about:blank antes do removeChild — corta pipeline de mídia.

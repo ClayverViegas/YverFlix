@@ -2122,3 +2122,53 @@ body {
     0%, 100% { opacity: 0.9; transform: scale(1); }
     50% { opacity: 1; transform: scale(1.02); }
 }
+
+/* ============================================================
+   FASE 8.1 — Toast de retomada de progresso
+   ============================================================ */
+
+.resume-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 22px;
+    background: rgba(20, 20, 30, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: #f0f0f0;
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 1.4;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    pointer-events: none;
+    max-width: min(90vw, 480px);
+}
+
+.resume-toast--visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+
+.resume-toast__icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.resume-toast__text {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.resume-toast__text strong {
+    color: #7eb8ff;
+    font-weight: 600;
+}
