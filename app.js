@@ -3516,24 +3516,38 @@
       // Garante limpeza prévia (caso enterPlayerView seja chamado 2x).
       destroyIframe();
 
-      // Mostra spinner DEPOIS do destroyIframe (que faz $mount.replaceChildren),
-      // senão o spinner seria apagado em seguida. onIframeLoad remove o spinner.
-      renderLoadingState();
+      // --- Montagem off-DOM: container → loading + iframe + barrier ---
+      // Tudo nasce DENTRO do container antes de tocar o $mount.
+      // Assim o $mount.replaceChildren(container) é atômico —
+      // nenhum fragmento "vaza" para a view de detalhes.
 
+      var container = document.createElement('div');
+      container.className = 'player__iframe-container';
+
+      // 1) Loading spinner (vive dentro do container, morre com ele).
+      var loadingBox = document.createElement('div');
+      loadingBox.className = 'player__loading';
+      loadingBox.setAttribute('role', 'status');
+      loadingBox.setAttribute('aria-live', 'polite');
+      var spinner = document.createElement('div');
+      spinner.className = 'spinner';
+      spinner.setAttribute('aria-hidden', 'true');
+      var loadingLabel = document.createElement('p');
+      loadingLabel.textContent = 'Carregando player\u2026';
+      loadingBox.appendChild(spinner);
+      loadingBox.appendChild(loadingLabel);
+      container.appendChild(loadingBox);
+
+      // 2) Iframe.
       var iframe = document.createElement('iframe');
       iframe.className = 'player__iframe';
       iframe.title = 'Player de vídeo — ' + (item.title || 'mídia');
-      // Configuração oficial exigida pela API para evitar bloqueios de CDN e Nested Iframes
       iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write; accelerometer; gyroscope; web-share');
       iframe.setAttribute('allowfullscreen', 'true');
       iframe.setAttribute('webkitallowfullscreen', 'true');
       iframe.setAttribute('mozallowfullscreen', 'true');
       iframe.referrerPolicy = 'no-referrer';
 
-      // HOTFIX: sandbox removido — Superflix detecta o atributo e redireciona
-      // pra /sanbox.php (404). Detalhes na constante IFRAME_SANDBOX comentada.
-
-      // Listeners + timeout idênticos à Fase 5.
       var sig = state.cleanups ? state.cleanups.signal : undefined;
       iframe.addEventListener('load', onIframeLoad, { signal: sig, once: true });
       iframe.addEventListener('error', onIframeFail, { signal: sig, once: true });
@@ -3546,17 +3560,12 @@
       iframe.src = url;
       console.log('[Player-Success] Link gerado:', url);
       state.iframe = iframe;
-
-      // Container relativo que agrupa iframe + escudo como irmãos.
-      // Garante que o barrier cubra EXCLUSIVAMENTE a área do player.
-      var container = document.createElement('div');
-      container.className = 'player__iframe-container';
       container.appendChild(iframe);
-      $mount.appendChild(container);
 
-      // Click-Eater: escudo absoluto sobre o iframe.
-      // Intercepta o primeiro clique (o mais agressivo para pop-ups de CDNs)
-      // antes que ele alcance o <iframe> real.
+      // 3) Click-Eater: escudo absoluto sobre o iframe.
+      //    Nasce e morre DENTRO do container — irmão exclusivo do <iframe>.
+      //    Enquanto o usuário está na view de detalhes/seleção, este
+      //    elemento NÃO EXISTE no DOM.
       var barrier = document.createElement('div');
       barrier.className = 'player__barrier';
       barrier.setAttribute('role', 'button');
@@ -3564,9 +3573,9 @@
 
       barrier.innerHTML =
         '<div class="player__barrier-content">' +
-          '<span class="player__barrier-icon" aria-hidden="true">🛡️</span>' +
+          '<span class="player__barrier-icon" aria-hidden="true">\uD83D\uDEE1\uFE0F</span>' +
           '<span class="player__barrier-title">Clique para liberar o player</span>' +
-          '<span class="player__barrier-text">Proteção Anti-PopUp ativa</span>' +
+          '<span class="player__barrier-text">Prote\u00E7\u00E3o Anti-PopUp ativa</span>' +
         '</div>';
 
       barrier.addEventListener('click', function () {
@@ -3577,6 +3586,11 @@
       });
 
       container.appendChild(barrier);
+
+      // 4) Injeção atômica: substitui TUDO que havia em $mount
+      //    (loading anterior, iframe anterior, barrier anterior)
+      //    por UM ÚNICO container.
+      $mount.replaceChildren(container);
     }
 
     /*
@@ -3687,25 +3701,6 @@
     }
 
     /* ---- estados visuais ---- */
-
-    function renderLoadingState() {
-      $mount.replaceChildren();
-      var box = document.createElement('div');
-      box.className = 'player__loading';
-      box.setAttribute('role', 'status');
-      box.setAttribute('aria-live', 'polite');
-
-      var spinner = document.createElement('div');
-      spinner.className = 'spinner';
-      spinner.setAttribute('aria-hidden', 'true');
-
-      var label = document.createElement('p');
-      label.textContent = 'Carregando player…';
-
-      box.appendChild(spinner);
-      box.appendChild(label);
-      $mount.appendChild(box);
-    }
 
     function renderErrorState() {
       $mount.replaceChildren();
