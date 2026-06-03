@@ -3546,33 +3546,37 @@
       iframe.src = url;
       console.log('[Player-Success] Link gerado:', url);
       state.iframe = iframe;
-      $mount.appendChild(iframe);
 
-      // Criação do Escudo Protetor Anti-Anúncio (Fase de Blindagem)
+      // Container relativo que agrupa iframe + escudo como irmãos.
+      // Garante que o barrier cubra EXCLUSIVAMENTE a área do player.
+      var container = document.createElement('div');
+      container.className = 'player__iframe-container';
+      container.appendChild(iframe);
+      $mount.appendChild(container);
+
+      // Click-Eater: escudo absoluto sobre o iframe.
+      // Intercepta o primeiro clique (o mais agressivo para pop-ups de CDNs)
+      // antes que ele alcance o <iframe> real.
       var barrier = document.createElement('div');
       barrier.className = 'player__barrier';
       barrier.setAttribute('role', 'button');
-      barrier.setAttribute('aria-label', 'Ativar Player com Proteção');
+      barrier.setAttribute('aria-label', 'Clique para liberar o player');
 
       barrier.innerHTML =
         '<div class="player__barrier-content">' +
           '<span class="player__barrier-icon" aria-hidden="true">🛡️</span>' +
-          '<span class="player__barrier-title">Clique para Liberar o Player</span>' +
-          '<span class="player__barrier-text">(Proteção Anti-PopUp Ativa)</span>' +
+          '<span class="player__barrier-title">Clique para liberar o player</span>' +
+          '<span class="player__barrier-text">Proteção Anti-PopUp ativa</span>' +
         '</div>';
 
-      // O primeiro clique limpa a barreira e expõe o player real sem disparar anúncios
       barrier.addEventListener('click', function () {
-        barrier.style.opacity = '0';
-        barrier.style.visibility = 'hidden';
+        barrier.classList.add('player__fade-out');
         setTimeout(function () {
-          if (barrier.parentNode) {
-            barrier.parentNode.removeChild(barrier);
-          }
-        }, 300); // Aguarda o fade-out do CSS terminar para dropar do DOM
+          if (barrier.parentNode) barrier.parentNode.removeChild(barrier);
+        }, 300);
       });
 
-      $mount.appendChild(barrier);
+      container.appendChild(barrier);
     }
 
     /*

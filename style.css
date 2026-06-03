@@ -2077,24 +2077,39 @@ body {
 /* ==========================================================================
    ESCUDO ANTI-CLICKJACKING (ANTI-AD OVERLAY LAYER)
    ========================================================================== */
+
+/*
+ * Container relativo que agrupa <iframe> + barrier como irmãos.
+ * position:relative garante que o barrier absoluto cubra SOMENTE
+ * a área do player (não o modal inteiro).
+ */
+.player__iframe-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
 .player__barrier {
     position: absolute;
-    inset: 0;
-    z-index: 20; /* Fica acima do iframe que está no z-index padrão */
-    background-color: rgba(0, 0, 0, 0.75); /* Escurece o player levemente */
-    backdrop-filter: blur(4px); /* Blur elegante de fundo */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 50;
+    background-color: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: opacity 0.3s ease, visibility 0.3s ease;
+    transition: opacity 0.3s ease;
 }
 
 .player__barrier-content {
     text-align: center;
     color: #fff;
     font-family: sans-serif;
-    pointer-events: none; /* Garante que o clique passe direto para a div pai */
+    pointer-events: none;
     animation: pulseBarrier 2s infinite ease-in-out;
 }
 
@@ -2116,6 +2131,12 @@ body {
     font-size: 13px;
     color: rgba(255, 255, 255, 0.6);
     display: block;
+}
+
+/* Fade-out aplicado via JS no click — anima opacidade e depois remove do DOM */
+.player__fade-out {
+    opacity: 0;
+    pointer-events: none;
 }
 
 @keyframes pulseBarrier {
