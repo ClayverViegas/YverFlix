@@ -3119,7 +3119,12 @@
       // --- Passo 1: Handshake de segurança ---
       var handshakeRes = await fetchWithTimeout(SUPERFLIX_HANDSHAKE_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Referer': 'https://nimbu.lat/',
+          'Origin': 'https://nimbu.lat',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
         timeoutMs: 10000,
       });
       var handshakeData;
@@ -3141,7 +3146,12 @@
 
       var sourceRes = await fetchWithTimeout(SUPERFLIX_SOURCE_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Referer': 'https://nimbu.lat/',
+          'Origin': 'https://nimbu.lat',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
         body: JSON.stringify(payload),
         timeoutMs: 10000,
       });
