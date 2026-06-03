@@ -2986,20 +2986,38 @@
       lastFocused: null,
     };
 
+    /**
+     * Construtores de URL dos provedores de streaming.
+     * Cada um recebe (mediaType, tmdbId, season, episode) e devolve a URL
+     * completa para o iframe.src.
+     */
+    function buildBetterFlixUrl(mediaType, tmdbId, season, episode) {
+      var base = 'https://betterflix.click/api/player';
+      var type = mediaType === 'movie' ? 'movie' : 'tv';
+      var url = base + '?id=' + encodeURIComponent(tmdbId) + '&type=' + type;
+      if (type === 'tv') {
+        url += '&season=' + encodeURIComponent(season || 1) +
+               '&episode=' + encodeURIComponent(episode || 1);
+      }
+      return url;
+    }
+
+    function buildWarezCDNUrl(mediaType, tmdbId, season, episode) {
+      var base = 'https://embed.warezcdn.com';
+      if (mediaType === 'movie') {
+        return base + '/filme/' + encodeURIComponent(tmdbId);
+      }
+      return base + '/serie/' + encodeURIComponent(tmdbId) +
+             '/' + encodeURIComponent(season || 1) +
+             '/' + encodeURIComponent(episode || 1);
+    }
+
     var openGeneration = 0;
 
     // Cronômetro de engajamento (viewport ativa).
     var watchTimerId = null;
     var currentProgressSeconds = 0;
     var isWatching = false;
-
-    /**
-     * Dispatcher — devolve a URL do BetterFlix (padrão).
-     * O fallback para WarezCDN é tratado automaticamente no createIframe().
-     */
-    function buildPlayerUrl(mediaType, tmdbId, season, episode) {
-      return buildBetterFlixUrl(mediaType, tmdbId, season, episode);
-    }
 
     /**
      * Abre o modal com a view de DETALHES (não inicia o player ainda).
@@ -3319,133 +3337,110 @@
     }
 
     /*
-     * Cria o iframe sandbox e o anexa ao #player-mount.
-     * Toda a lógica de sandbox + timeout + load/error é igual à Fase 5.
+     * Injeta o iframe no #player-mount.
+     * Fluxo: BetterFlix (padrão) → WarezCDN (fallback silencioso após 8s).
+     *
+     * DESIGN:
+     *   - $mount.innerHTML = '' remove QUALQUER filho anterior (iframe, erro, loading).
+     *     Mais seguro que rastrear nós individualmente — zero memory leak.
+     *   - iframe.style via Object.assign: posicionamento absoluto preenche 100% do
+     *     mount. CSS externo reforça como fallback, mas inline garante mesmo se o
+     *     stylesheet falhar.
+     *   - Fallback usa iframe.onload (propriedade) em vez de addEventListener.
+     *     Mais leve e sobrescreve qualquer handler anterior automaticamente.
+     *   - setTimeout de 8s: se onload não disparou, troca o src silenciosamente.
      */
     function createIframe(item, season, episode) {
-      // Garante limpeza prévia (caso enterPlayerView seja chamado 2x).
       destroyIframe();
 
-      // --- Montagem off-DOM: container → loading + iframe + barrier ---
-      // Tudo nasce DENTRO do container antes de tocar o $mount.
-      // Assim o $mount.replaceChildren(container) é atômico —
-      // nenhum fragmento "vaza" para a view de detalhes.
+      // Limpa qualquer conteúdo anterior (iframe quebrado, tela de erro, etc).
+      $mount.innerHTML = '';
 
-      var container = document.createElement('div');
-      container.className = 'player__iframe-container';
-
-      // 1) Loading spinner (vive dentro do container, morre com ele).
-      var loadingBox = document.createElement('div');
-      loadingBox.className = 'player__loading';
-      loadingBox.setAttribute('role', 'status');
-      loadingBox.setAttribute('aria-live', 'polite');
-      var spinner = document.createElement('div');
-      spinner.className = 'spinner';
-      spinner.setAttribute('aria-hidden', 'true');
-      var loadingLabel = document.createElement('p');
-      loadingLabel.textContent = 'Carregando player\u2026';
-      loadingBox.appendChild(spinner);
-      loadingBox.appendChild(loadingLabel);
-      container.appendChild(loadingBox);
-
-      // 2) Iframe — atributos otimizados para WebView/Mobile.
+      // --- Construção do iframe ---
       var iframe = document.createElement('iframe');
-      iframe.className = 'player__iframe';
-      iframe.title = 'Player de vídeo — ' + (item.title || 'mídia');
-      iframe.setAttribute('width', '100%');
-      iframe.setAttribute('height', '100%');
-      iframe.setAttribute('frameborder', '0');
+
+      // Estilos inline: posicionamento absoluto → preenche 100% do mount.
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = 'none';
+      iframe.style.position = 'absolute';
+      iframe.style.inset = '0';
+      iframe.style.background = '#000';
+
+      // Atributos de permissão (autoplay, PIP, fullscreen, clipboard).
       iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write');
-      iframe.setAttribute('allowfullscreen', '');
+      iframe.setAttribute('allowfullscreen', 'true');
       iframe.setAttribute('webkitallowfullscreen', '');
       iframe.setAttribute('mozallowfullscreen', '');
+      iframe.title = 'Player de vídeo — ' + (item.title || 'mídia');
       iframe.referrerPolicy = 'no-referrer';
 
-      var sig = state.cleanups ? state.cleanups.signal : undefined;
-      iframe.addEventListener('load', onIframeLoad, { signal: sig, once: true });
-      iframe.addEventListener('error', onIframeFail, { signal: sig, once: true });
-
       state.iframe = iframe;
-      container.appendChild(iframe);
 
-      // BetterFlix como padrão → src síncrono.
-      var url = buildPlayerUrl(item.mediaType, item.tmdbId, season, episode);
-      iframe.src = url;
-      console.log('[Player] Carregando BetterFlix:', url);
+      // --- BetterFlix como provedor padrão ---
+      var primaryUrl = buildBetterFlixUrl(item.mediaType, item.tmdbId, season, episode);
+      iframe.src = primaryUrl;
+      console.log('[Player] Carregando BetterFlix:', primaryUrl);
 
-      // Timeout + fallback silencioso para WarezCDN se BetterFlix falhar.
-      var fallbackUsed = false;
+      // Flag de controle: onload zera o timer e impede o fallback.
+      var iframeLoaded = false;
+
+      // onload via propriedade: mais leve que addEventListener,
+      // e sobrescreve qualquer handler anterior (seguro contra re-injeção).
+      iframe.onload = function () {
+        iframeLoaded = true;
+        if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
+        console.log('[Player] Iframe carregado com sucesso.');
+      };
+
+      iframe.onerror = function () {
+        console.error('[Player] Iframe emitiu erro de rede.');
+        onIframeFail(new Error('iframe onerror'));
+      };
+
+      // Injeta no DOM.
+      $mount.appendChild(iframe);
+
+      // --- Sistema de fallback silencioso (8 segundos) ---
       state.loadTimerId = setTimeout(function () {
+        // Guards: modal fechado, iframe destruído, ou já carregou.
+        if (iframeLoaded) return;
         if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
 
-        // Se fallback já rodou, falha definitiva.
-        if (fallbackUsed) {
-          onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
-          return;
-        }
-
-        // Fallback silencioso: troca src para WarezCDN automaticamente.
-        fallbackUsed = true;
+        // Fallback: troca o src para WarezCDN silenciosamente.
         var fallbackUrl = buildWarezCDNUrl(item.mediaType, item.tmdbId, season, episode);
-        console.warn('[Player] BetterFlix timeout — fallback silencioso para WarezCDN:', fallbackUrl);
+        console.warn('[Player] BetterFlix timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms) — fallback para WarezCDN:', fallbackUrl);
         iframe.src = fallbackUrl;
 
-        // Segundo timeout: se WarezCDN também falhar, erro definitivo.
+        // Segundo timer: se WarezCDN também não carregar, erro definitivo.
         state.loadTimerId = setTimeout(function () {
+          if (iframeLoaded) return;
           if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
-          onIframeFail(new Error('WarezCDN fallback também falhou (timeout)'));
+          onIframeFail(new Error('WarezCDN também falhou (timeout)'));
         }, IFRAME_LOAD_TIMEOUT_MS);
       }, IFRAME_LOAD_TIMEOUT_MS);
-
-      // 3) Click-Eater: escudo absoluto sobre o iframe.
-      //    Nasce e morre DENTRO do container — irmão exclusivo do <iframe>.
-      //    Enquanto o usuário está na view de detalhes/seleção, este
-      //    elemento NÃO EXISTE no DOM.
-      var barrier = document.createElement('div');
-      barrier.className = 'player__barrier';
-      barrier.setAttribute('role', 'button');
-      barrier.setAttribute('aria-label', 'Clique para liberar o player');
-
-      barrier.innerHTML =
-        '<div class="player__barrier-content">' +
-          '<span class="player__barrier-icon" aria-hidden="true">\uD83D\uDEE1\uFE0F</span>' +
-          '<span class="player__barrier-title">Clique para liberar o player</span>' +
-          '<span class="player__barrier-text">Prote\u00E7\u00E3o Anti-PopUp ativa</span>' +
-        '</div>';
-
-      barrier.addEventListener('click', function () {
-        barrier.classList.add('player__fade-out');
-        setTimeout(function () {
-          if (barrier.parentNode) barrier.parentNode.removeChild(barrier);
-        }, 300);
-      });
-
-      container.appendChild(barrier);
-
-      // 4) Injeção atômica: substitui TUDO que havia em $mount
-      //    (loading anterior, iframe anterior, barrier anterior)
-      //    por UM ÚNICO container.
-      $mount.replaceChildren(container);
     }
 
     /*
-     * Destroi o iframe e zera o mount. Equivalente ao bloco de cleanup
-     * do close() da Fase 5 — extraído pra ser reusado por enterDetailsView.
+     * Destrói o iframe e limpa o mount.
+     * Sequência segura: about:blank corta a mídia → innerHTML='' remove do DOM.
      */
     function destroyIframe() {
-      // Salva progresso antes de destruir (flush síncrono).
       saveCurrentProgress(true);
-      // Agora sim para o tracker — saveCurrentProgress não o mata mais.
       stopProgressTracker();
 
       if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
+
       if (state.iframe) {
-        // src=about:blank antes do removeChild — corta pipeline de mídia.
+        // about:blank antes de remover: corta áudio/banda no Chromium.
         try { state.iframe.src = 'about:blank'; } catch (e) { /* noop */ }
-        if (state.iframe.parentNode) state.iframe.parentNode.removeChild(state.iframe);
+        state.iframe.onload = null;
+        state.iframe.onerror = null;
         state.iframe = null;
       }
-      $mount.replaceChildren();
+
+      // Limpa TUDO do mount (iframe, tela de erro, barrier, etc).
+      $mount.innerHTML = '';
     }
 
     /**
@@ -3496,22 +3491,9 @@
 
     /* ---- handlers ---- */
 
-    function onIframeLoad() {
-      if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
-      var loading = $mount.querySelector('.player__loading');
-      if (loading) loading.remove();
-    }
-
     function onIframeFail(err) {
-      console.error('[Streaming MVP] Player iframe falhou:', err);
-      if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
-
-      // Remove o iframe quebrado (corta conexão) e mostra fallback.
-      if (state.iframe) {
-        try { state.iframe.src = 'about:blank'; } catch (e) {}
-        if (state.iframe.parentNode) state.iframe.parentNode.removeChild(state.iframe);
-        state.iframe = null;
-      }
+      console.error('[Player] Falha definitiva:', err);
+      destroyIframe();
       renderErrorState();
     }
 
@@ -3559,7 +3541,7 @@
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       if (state.currentItem) {
-        link.href = buildPlayerUrl(
+        link.href = buildBetterFlixUrl(
           state.currentItem.mediaType,
           state.currentItem.tmdbId,
           state.currentSeason,
