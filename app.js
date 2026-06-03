@@ -2972,64 +2972,60 @@
     var $nextEpBtn      = document.getElementById('btn-next-ep');
     var $skipBtn        = document.getElementById('btn-skip-10');
 
-    var IFRAME_LOAD_TIMEOUT_MS = 12000;
-    var SUPERFLIX_BASE = 'https://superflixapi.best';
-
-    /*
-     * HOTFIX (pós-Fase 6) — Handshake de segurança do Superflix.
-     *
-     * O player exige um POST de "handshake" antes de liberar a URL do
-     * stream. Sem esse passo, a WebView bloqueia com net::ERR_BLOCKED_BY_RESPONSE.
-     *
-     * Fluxo:
-     *   1) POST /fireplayer-control/access → deve retornar {"ok": true}
-     *   2) POST /player/source {id, season?, episode?} → retorna {video_url: "..."}
-     *   3) Iframe.src = video_url (página mãe é ignorada)
-     */
-    var SUPERFLIX_HANDSHAKE_URL =
-      'https://xn--kcksk7a2bl5le7b6doc1h3f.xn--kcksk7a2bl5le7b6doc1h3f.com/fireplayer-control/access';
-    var SUPERFLIX_SOURCE_URL =
-      'https://superflixapi.fit/player/source';
-
-    /*
-     * HOTFIX (pós-Fase 6) — Sandbox REMOVIDO.
-     *
-     * O Superflix passou a injetar um detector ofuscado (`__Y.detectSandbox()`)
-     * que verifica `window.frameElement.hasAttribute('sandbox')` e, ao detectar
-     * QUALQUER valor de sandbox, redireciona o iframe para `/sanbox.php?<ref>`
-     * — endpoint que retorna HTTP 404. Resultado: a tela "404 NOT FOUND" que
-     * o usuário viu em vez do player.
-     *
-     * Como a checagem é "tem o atributo?" (sem olhar tokens), nenhuma
-     * combinação de allow-* contorna a detecção. A única opção é não
-     * declarar sandbox.
-     *
-     * Mitigações de ad que mantemos (defense-in-depth, sem sandbox):
-     *   - referrerpolicy="no-referrer" → reduz tracking cross-site
-     *   - allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-     *     → Permissions Policy mínima (não autoriza geolocation, mic, camera,
-     *       payment, USB, etc.)
-     *   - Bloqueador de popups nativo do Chrome cobre boa parte de window.open
-     *   - Modal próprio captura ESC; o iframe não consegue fechar nossa página
-     *     porque ele está em outra origin (mesmo sem sandbox, allow-top-navigation
-     *     cross-origin já é bloqueado pelo browser por padrão).
-     */
-    // var IFRAME_SANDBOX = 'allow-forms allow-scripts allow-same-origin allow-presentation';
-
     /**
-     * FASE 8 — Server providers. Cada server tem seu próprio adapter de URL.
-     * Ao adicionar mais servers (Mixdrop, Embedder), só registrar aqui.
+     * Timeout (ms) para carregamento do iframe. Se o player não disparar
+     * 'load' dentro desse tempo, tratamos como falha e tentamos fallback.
      */
-    var SERVERS = {
-      '1': { id: '1', name: 'Servidor 1', build: buildSuperflixUrl },
-      '2': { id: '2', name: 'Servidor 2', build: buildVidsrcUrl     },
-    };
+    var IFRAME_LOAD_TIMEOUT_MS = 8000;
+
     var SERVER_PREF_KEY = 'yverflix:server:preference';
 
     /**
-     * Última escolha do user persistida em localStorage. Default: '2' (VidSrc).
-     * Persistir entre sessões evita o user re-trocar toda vez que abre
-     * um conteúdo se o Server 2 funcionar melhor pra rede dele.
+     * Server 1 — BetterFlix.
+     *   movie:  https://betterflix.click/api/player?id={tmdbId}&type=movie
+     *   tv:     https://betterflix.click/api/player?id={tmdbId}&type=tv&season={s}&episode={e}
+     */
+    function buildBetterFlixUrl(mediaType, tmdbId, season, episode) {
+      var base = 'https://betterflix.click/api/player';
+      var type = mediaType === 'movie' ? 'movie' : 'tv';
+      var url = base + '?id=' + encodeURIComponent(tmdbId) + '&type=' + type;
+      if (type === 'tv') {
+        url += '&season=' + encodeURIComponent(season || 1) +
+               '&episode=' + encodeURIComponent(episode || 1);
+      }
+      return url;
+    }
+
+    /**
+     * Server 2 — WarezCDN.
+     *   movie:  https://embed.warezcdn.com/filme/{tmdbId}
+     *   tv:     https://embed.warezcdn.com/serie/{tmdbId}/{season}/{episode}
+     */
+    function buildWarezCDNUrl(mediaType, tmdbId, season, episode) {
+      var base = 'https://embed.warezcdn.com';
+      if (mediaType === 'movie') {
+        return base + '/filme/' + encodeURIComponent(tmdbId);
+      }
+      return base + '/serie/' + encodeURIComponent(tmdbId) +
+             '/' + encodeURIComponent(season || 1) +
+             '/' + encodeURIComponent(episode || 1);
+    }
+
+    /**
+     * Registro de provedores. Cada server expõe:
+     *   - id:    identificador chave (string)
+     *   - name:  label exibido na UI
+     *   - build: fn(mediaType, tmdbId, season, episode) → string URL
+     */
+    var SERVERS = {
+      '1': { id: '1', name: 'BetterFlix',  build: buildBetterFlixUrl },
+      '2': { id: '2', name: 'WarezCDN',    build: buildWarezCDNUrl   },
+    };
+
+    /**
+     * Preferência de servidor persistida em localStorage.
+     * Default: '1' (BetterFlix). Se o valor salvo não existir mais
+     * no registro (ex: removemos um server), cai para '1'.
      */
     function readServerPref() {
       try {
@@ -3043,13 +3039,13 @@
 
     var state = {
       isOpen: false,
-      view: 'details',         // FASE 6 — 'details' | 'player'
+      view: 'details',
       iframe: null,
       currentItem: null,
       currentSeason: null,
       currentEpisode: null,
-      currentEpisodeTitle: null,    // FASE 8 — pra HistoryService
-      currentServer: readServerPref(),  // FASE 8 — '1' | '2'
+      currentEpisodeTitle: null,
+      currentServer: readServerPref(),
       loadTimerId: 0,
       cleanups: null,
       lastFocused: null,
@@ -3057,106 +3053,18 @@
 
     var openGeneration = 0;
 
-    // FASE 8.1 — Cronômetro de engajamento (viewport ativa).
+    // Cronômetro de engajamento (viewport ativa).
     var watchTimerId = null;
     var currentProgressSeconds = 0;
     var isWatching = false;
 
     /**
-     * Server 1 — Superflix. URL encurtada com params em PT-BR e cache buster.
-     */
-    function buildSuperflixUrl(mediaType, tmdbId, season, episode) {
-      if (mediaType === 'movie') {
-        return SUPERFLIX_BASE + '/filme/' + encodeURIComponent(tmdbId);
-      }
-      return SUPERFLIX_BASE + '/serie/' + encodeURIComponent(tmdbId) +
-             '/' + encodeURIComponent(season || 1) +
-             '/' + encodeURIComponent(episode || 1);
-    }
-
-    /**
-     * Server 2 — VidSrc (substituiu WarezCDN, domínio morto).
-     * Docs: https://vidsrc.me/api/
-     *   filme: https://vidsrc-embed.ru/embed/movie/<TMDB_ID>
-     *   série: https://vidsrc-embed.ru/embed/tv/<TMDB_ID>/<SEASON>/<EPISODE>
-     */
-    function buildVidsrcUrl(mediaType, tmdbId, season, episode) {
-      var id = encodeURIComponent(tmdbId);
-      if (mediaType === 'movie') {
-        return 'https://vidsrc-embed.ru/embed/movie/' + id;
-      }
-      var s = season != null ? season : 1;
-      var e = episode != null ? episode : 1;
-      return 'https://vidsrc-embed.ru/embed/tv/' + id +
-             '/' + encodeURIComponent(s) +
-             '/' + encodeURIComponent(e);
-    }
-
-    /**
-     * Dispatcher — escolhe o adapter conforme o server atual.
-     * Server desconhecido cai no Server 2 (defesa contra localStorage corrompido).
+     * Dispatcher — devolve a URL construída pelo provedor ativo.
+     * Fallback defensivo: server desconhecido → BetterFlix ('1').
      */
     function buildPlayerUrl(server, mediaType, tmdbId, season, episode) {
-      var s = SERVERS[server] || SERVERS['2'];
+      var s = SERVERS[server] || SERVERS['1'];
       return s.build(mediaType, tmdbId, season, episode);
-    }
-
-    /**
-     * Resolve a URL de stream direta do Superflix via handshake + source.
-     *
-     * Fluxo sequencial:
-     *   Passo 1 — POST /fireplayer-control/access (handshake de segurança)
-     *   Passo 2 — POST /player/source {id, season?, episode?}
-     *   Retorna a string video_url pronta pra ser setada no iframe.src.
-     *
-     * @param {'movie'|'tv'} mediaType
-     * @param {number}       tmdbId
-     * @param {number|null}  season   (null para filmes)
-     * @param {number|null}  episode  (null para filmes)
-     * @returns {Promise<string>} video_url
-     */
-    /**
-     * Helper: POST genérico via /api/proxy (Serverless Function).
-     * O proxy injeta Referer, Origin e User-Agent server-side, contornando
-     * a restrição do browser que bloqueia esses headers no client.
-     *
-     * @param {string} targetUrl - URL de destino no upstream
-     * @param {Object} [payload] - body JSON (opcional)
-     * @returns {Promise<Object>} JSON da resposta
-     */
-    async function proxyPost(targetUrl, payload) {
-      var body = { targetUrl: targetUrl };
-      if (payload) body.payload = payload;
-
-      var res = await fetchWithTimeout('/api/proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        timeoutMs: 10000,
-      });
-      return res.json();
-    }
-
-    async function resolveSuperflixStreamUrl(mediaType, tmdbId, season, episode) {
-      // --- Passo 1: Handshake de segurança (via proxy) ---
-      var handshakeData = await proxyPost(SUPERFLIX_HANDSHAKE_URL);
-      if (!handshakeData || handshakeData.ok !== true) {
-        throw new Error('Handshake rejeitado: ' + JSON.stringify(handshakeData));
-      }
-
-      // --- Passo 2: Extrair URL do stream (via proxy) ---
-      var payload = { id: tmdbId };
-      if (mediaType === 'tv') {
-        payload.season  = season  != null ? season  : 1;
-        payload.episode = episode != null ? episode : 1;
-      }
-
-      var sourceData = await proxyPost(SUPERFLIX_SOURCE_URL, payload);
-      if (!sourceData || !sourceData.video_url) {
-        throw new Error('video_url ausente na resposta do source');
-      }
-
-      return sourceData.video_url;
     }
 
     /**
@@ -3616,60 +3524,54 @@
       loadingBox.appendChild(loadingLabel);
       container.appendChild(loadingBox);
 
-      // 2) Iframe.
+      // 2) Iframe — atributos otimizados para WebView/Mobile.
       var iframe = document.createElement('iframe');
       iframe.className = 'player__iframe';
       iframe.title = 'Player de vídeo — ' + (item.title || 'mídia');
-      iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write; accelerometer; gyroscope; web-share');
-      iframe.setAttribute('allowfullscreen', 'true');
-      iframe.setAttribute('webkitallowfullscreen', 'true');
-      iframe.setAttribute('mozallowfullscreen', 'true');
+      iframe.setAttribute('width', '100%');
+      iframe.setAttribute('height', '100%');
+      iframe.setAttribute('frameborder', '0');
+      iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write');
+      iframe.setAttribute('allowfullscreen', '');
+      iframe.setAttribute('webkitallowfullscreen', '');
+      iframe.setAttribute('mozallowfullscreen', '');
       iframe.referrerPolicy = 'no-referrer';
 
       var sig = state.cleanups ? state.cleanups.signal : undefined;
       iframe.addEventListener('load', onIframeLoad, { signal: sig, once: true });
       iframe.addEventListener('error', onIframeFail, { signal: sig, once: true });
 
-      /*
-       * Server 1 (Superflix): fluxo assíncrono com handshake de segurança.
-       * O iframe NASCE sem src; só recebe a URL após o handshake + source
-       * resolverem com sucesso. O timeout de carregamento é adiado até
-       * o momento em que o src é setado (evita timeout prematuro).
-       *
-       * Server 2 (VidSrc): fluxo síncrono direto (sem handshake).
-       * Timeout dispara imediatamente.
-       */
       state.iframe = iframe;
       container.appendChild(iframe);
 
-      if (state.currentServer === '1') {
-        var currentGen = openGeneration;
-        resolveSuperflixStreamUrl(item.mediaType, item.tmdbId, season, episode)
-          .then(function (videoUrl) {
-            // Race guard: modal pode ter fechado ou user trocou de server/ep.
-            if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
-            if (currentGen !== openGeneration) return;
-            // Timeout do iframe começa AGORA (pós-handshake).
-            state.loadTimerId = setTimeout(function () {
-              onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
-            }, IFRAME_LOAD_TIMEOUT_MS);
-            iframe.src = videoUrl;
-            console.log('[Player-Success] Link gerado (handshake ok):', videoUrl);
-          })
-          .catch(function (err) {
-            if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
-            if (currentGen !== openGeneration) return;
-            console.error('[Player] Handshake Superflix falhou:', err);
-            onIframeFail(err);
-          });
-      } else {
-        state.loadTimerId = setTimeout(function () {
+      // URL do provedor ativo → src síncrono.
+      var url = buildPlayerUrl(state.currentServer, item.mediaType, item.tmdbId, season, episode);
+      iframe.src = url;
+      console.log('[Player] Carregando:', SERVERS[state.currentServer].name, url);
+
+      // Timeout + fallback automático para Servidor 2 se o atual falhar.
+      var fallbackUsed = false;
+      state.loadTimerId = setTimeout(function () {
+        if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
+
+        // Se já estamos no Server 2 (ou fallback já rodou), falha definitiva.
+        if (state.currentServer === '2' || fallbackUsed) {
           onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
+          return;
+        }
+
+        // Fallback: tenta WarezCDN (Server 2) automaticamente.
+        fallbackUsed = true;
+        var fallbackUrl = buildPlayerUrl('2', item.mediaType, item.tmdbId, season, episode);
+        console.warn('[Player] Timeout no ' + SERVERS[state.currentServer].name + ' — fallback para WarezCDN:', fallbackUrl);
+        iframe.src = fallbackUrl;
+
+        // Segundo timeout: se o fallback também falhar, erro definitivo.
+        state.loadTimerId = setTimeout(function () {
+          if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
+          onIframeFail(new Error('Fallback WarezCDN também falhou (timeout)'));
         }, IFRAME_LOAD_TIMEOUT_MS);
-        var url = buildPlayerUrl(state.currentServer, item.mediaType, item.tmdbId, season, episode);
-        iframe.src = url;
-        console.log('[Player-Success] Link gerado:', url);
-      }
+      }, IFRAME_LOAD_TIMEOUT_MS);
 
       // 3) Click-Eater: escudo absoluto sobre o iframe.
       //    Nasce e morre DENTRO do container — irmão exclusivo do <iframe>.
