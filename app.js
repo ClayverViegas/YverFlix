@@ -2994,7 +2994,7 @@
     function buildBetterFlixUrl(mediaType, tmdbId, season, episode) {
       var base = 'https://betterflix.click/api/player';
       var type = mediaType === 'movie' ? 'movie' : 'tv';
-      var url = base + '?id=' + encodeURIComponent(tmdbId) + '&type=' + type;
+      var url = base + '?id=' + encodeURIComponent(tmdbId) + '&type=' + type + '&source=server2';
       if (type === 'tv') {
         url += '&season=' + encodeURIComponent(season || 1) +
                '&episode=' + encodeURIComponent(episode || 1);
