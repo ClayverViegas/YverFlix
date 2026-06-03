@@ -3115,52 +3115,43 @@
      * @param {number|null}  episode  (null para filmes)
      * @returns {Promise<string>} video_url
      */
-    async function resolveSuperflixStreamUrl(mediaType, tmdbId, season, episode) {
-      // --- Passo 1: Handshake de segurança ---
-      var handshakeRes = await fetchWithTimeout(SUPERFLIX_HANDSHAKE_URL, {
+    /**
+     * Helper: POST genérico via /api/proxy (Serverless Function).
+     * O proxy injeta Referer, Origin e User-Agent server-side, contornando
+     * a restrição do browser que bloqueia esses headers no client.
+     *
+     * @param {string} targetUrl - URL de destino no upstream
+     * @param {Object} [payload] - body JSON (opcional)
+     * @returns {Promise<Object>} JSON da resposta
+     */
+    async function proxyPost(targetUrl, payload) {
+      var body = { targetUrl: targetUrl };
+      if (payload) body.payload = payload;
+
+      var res = await fetchWithTimeout('/api/proxy', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Referer': 'https://nimbu.lat/',
-          'Origin': 'https://nimbu.lat',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
         timeoutMs: 10000,
       });
-      var handshakeData;
-      try {
-        handshakeData = await handshakeRes.json();
-      } catch (parseErr) {
-        throw new Error('Handshake: resposta não é JSON válido');
-      }
+      return res.json();
+    }
+
+    async function resolveSuperflixStreamUrl(mediaType, tmdbId, season, episode) {
+      // --- Passo 1: Handshake de segurança (via proxy) ---
+      var handshakeData = await proxyPost(SUPERFLIX_HANDSHAKE_URL);
       if (!handshakeData || handshakeData.ok !== true) {
         throw new Error('Handshake rejeitado: ' + JSON.stringify(handshakeData));
       }
 
-      // --- Passo 2: Extrair URL do stream ---
+      // --- Passo 2: Extrair URL do stream (via proxy) ---
       var payload = { id: tmdbId };
       if (mediaType === 'tv') {
         payload.season  = season  != null ? season  : 1;
         payload.episode = episode != null ? episode : 1;
       }
 
-      var sourceRes = await fetchWithTimeout(SUPERFLIX_SOURCE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Referer': 'https://nimbu.lat/',
-          'Origin': 'https://nimbu.lat',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-        body: JSON.stringify(payload),
-        timeoutMs: 10000,
-      });
-      var sourceData;
-      try {
-        sourceData = await sourceRes.json();
-      } catch (parseErr) {
-        throw new Error('Source: resposta não é JSON válido');
-      }
+      var sourceData = await proxyPost(SUPERFLIX_SOURCE_URL, payload);
       if (!sourceData || !sourceData.video_url) {
         throw new Error('video_url ausente na resposta do source');
       }
