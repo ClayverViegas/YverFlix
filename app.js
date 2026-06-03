@@ -239,7 +239,11 @@
     }, timeoutMs);
 
     try {
-      var response = await fetch(url, { signal: controller.signal });
+      var fetchOpts = { signal: controller.signal };
+      if (options.method)  fetchOpts.method  = options.method;
+      if (options.headers) fetchOpts.headers = options.headers;
+      if (options.body != null) fetchOpts.body = options.body;
+      var response = await fetch(url, fetchOpts);
 
       if (!response.ok) {
         // 5xx é potencialmente transitório → retry.
@@ -2972,6 +2976,22 @@
     var SUPERFLIX_BASE = 'https://superflixapi.best';
 
     /*
+     * HOTFIX (pós-Fase 6) — Handshake de segurança do Superflix.
+     *
+     * O player exige um POST de "handshake" antes de liberar a URL do
+     * stream. Sem esse passo, a WebView bloqueia com net::ERR_BLOCKED_BY_RESPONSE.
+     *
+     * Fluxo:
+     *   1) POST /fireplayer-control/access → deve retornar {"ok": true}
+     *   2) POST /player/source {id, season?, episode?} → retorna {video_url: "..."}
+     *   3) Iframe.src = video_url (página mãe é ignorada)
+     */
+    var SUPERFLIX_HANDSHAKE_URL =
+      'https://xn--kcksk7a2bl5le7b6doc1h3f.xn--kcksk7a2bl5le7b6doc1h3f.com/fireplayer-control/access';
+    var SUPERFLIX_SOURCE_URL =
+      'https://superflixapi.fit/player/source';
+
+    /*
      * HOTFIX (pós-Fase 6) — Sandbox REMOVIDO.
      *
      * O Superflix passou a injetar um detector ofuscado (`__Y.detectSandbox()`)
@@ -3079,6 +3099,63 @@
     function buildPlayerUrl(server, mediaType, tmdbId, season, episode) {
       var s = SERVERS[server] || SERVERS['2'];
       return s.build(mediaType, tmdbId, season, episode);
+    }
+
+    /**
+     * Resolve a URL de stream direta do Superflix via handshake + source.
+     *
+     * Fluxo sequencial:
+     *   Passo 1 — POST /fireplayer-control/access (handshake de segurança)
+     *   Passo 2 — POST /player/source {id, season?, episode?}
+     *   Retorna a string video_url pronta pra ser setada no iframe.src.
+     *
+     * @param {'movie'|'tv'} mediaType
+     * @param {number}       tmdbId
+     * @param {number|null}  season   (null para filmes)
+     * @param {number|null}  episode  (null para filmes)
+     * @returns {Promise<string>} video_url
+     */
+    async function resolveSuperflixStreamUrl(mediaType, tmdbId, season, episode) {
+      // --- Passo 1: Handshake de segurança ---
+      var handshakeRes = await fetchWithTimeout(SUPERFLIX_HANDSHAKE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        timeoutMs: 10000,
+      });
+      var handshakeData;
+      try {
+        handshakeData = await handshakeRes.json();
+      } catch (parseErr) {
+        throw new Error('Handshake: resposta não é JSON válido');
+      }
+      if (!handshakeData || handshakeData.ok !== true) {
+        throw new Error('Handshake rejeitado: ' + JSON.stringify(handshakeData));
+      }
+
+      // --- Passo 2: Extrair URL do stream ---
+      var payload = { id: tmdbId };
+      if (mediaType === 'tv') {
+        payload.season  = season  != null ? season  : 1;
+        payload.episode = episode != null ? episode : 1;
+      }
+
+      var sourceRes = await fetchWithTimeout(SUPERFLIX_SOURCE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        timeoutMs: 10000,
+      });
+      var sourceData;
+      try {
+        sourceData = await sourceRes.json();
+      } catch (parseErr) {
+        throw new Error('Source: resposta não é JSON válido');
+      }
+      if (!sourceData || !sourceData.video_url) {
+        throw new Error('video_url ausente na resposta do source');
+      }
+
+      return sourceData.video_url;
     }
 
     /**
@@ -3552,15 +3629,46 @@
       iframe.addEventListener('load', onIframeLoad, { signal: sig, once: true });
       iframe.addEventListener('error', onIframeFail, { signal: sig, once: true });
 
-      state.loadTimerId = setTimeout(function () {
-        onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
-      }, IFRAME_LOAD_TIMEOUT_MS);
-
-      var url = buildPlayerUrl(state.currentServer, item.mediaType, item.tmdbId, season, episode);
-      iframe.src = url;
-      console.log('[Player-Success] Link gerado:', url);
+      /*
+       * Server 1 (Superflix): fluxo assíncrono com handshake de segurança.
+       * O iframe NASCE sem src; só recebe a URL após o handshake + source
+       * resolverem com sucesso. O timeout de carregamento é adiado até
+       * o momento em que o src é setado (evita timeout prematuro).
+       *
+       * Server 2 (VidSrc): fluxo síncrono direto (sem handshake).
+       * Timeout dispara imediatamente.
+       */
       state.iframe = iframe;
       container.appendChild(iframe);
+
+      if (state.currentServer === '1') {
+        var currentGen = openGeneration;
+        resolveSuperflixStreamUrl(item.mediaType, item.tmdbId, season, episode)
+          .then(function (videoUrl) {
+            // Race guard: modal pode ter fechado ou user trocou de server/ep.
+            if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
+            if (currentGen !== openGeneration) return;
+            // Timeout do iframe começa AGORA (pós-handshake).
+            state.loadTimerId = setTimeout(function () {
+              onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
+            }, IFRAME_LOAD_TIMEOUT_MS);
+            iframe.src = videoUrl;
+            console.log('[Player-Success] Link gerado (handshake ok):', videoUrl);
+          })
+          .catch(function (err) {
+            if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
+            if (currentGen !== openGeneration) return;
+            console.error('[Player] Handshake Superflix falhou:', err);
+            onIframeFail(err);
+          });
+      } else {
+        state.loadTimerId = setTimeout(function () {
+          onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
+        }, IFRAME_LOAD_TIMEOUT_MS);
+        var url = buildPlayerUrl(state.currentServer, item.mediaType, item.tmdbId, season, episode);
+        iframe.src = url;
+        console.log('[Player-Success] Link gerado:', url);
+      }
 
       // 3) Click-Eater: escudo absoluto sobre o iframe.
       //    Nasce e morre DENTRO do container — irmão exclusivo do <iframe>.
