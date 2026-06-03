@@ -1481,9 +1481,6 @@
 
     /**
      * Retorna a lista de episódios da temporada atualmente carregada em cache.
-     * Usado pelo goToNextEpisode para navegação index-based (sem incremento
-     * matemático puro — evita pular episódios em séries com numbering não
-     * sequencial).
      *
      * @returns {Array<{number:number, name:string, ...}>}
      */
@@ -2969,73 +2966,12 @@
     var $playerView     = document.getElementById('player-view');
     var $mount          = document.getElementById('player-mount');
     var $closeBtns      = $modal.querySelectorAll('[data-modal-close]');
-    var $nextEpBtn      = document.getElementById('btn-next-ep');
-    var $skipBtn        = document.getElementById('btn-skip-10');
 
     /**
-     * Timeout (ms) para carregamento do iframe. Se o player não disparar
-     * 'load' dentro desse tempo, tratamos como falha e tentamos fallback.
+     * Timeout (ms) para carregamento do iframe. Se o BetterFlix não disparar
+     * 'load' dentro desse tempo, fallback silencioso para WarezCDN.
      */
     var IFRAME_LOAD_TIMEOUT_MS = 8000;
-
-    var SERVER_PREF_KEY = 'yverflix:server:preference';
-
-    /**
-     * Server 1 — BetterFlix.
-     *   movie:  https://betterflix.click/api/player?id={tmdbId}&type=movie
-     *   tv:     https://betterflix.click/api/player?id={tmdbId}&type=tv&season={s}&episode={e}
-     */
-    function buildBetterFlixUrl(mediaType, tmdbId, season, episode) {
-      var base = 'https://betterflix.click/api/player';
-      var type = mediaType === 'movie' ? 'movie' : 'tv';
-      var url = base + '?id=' + encodeURIComponent(tmdbId) + '&type=' + type;
-      if (type === 'tv') {
-        url += '&season=' + encodeURIComponent(season || 1) +
-               '&episode=' + encodeURIComponent(episode || 1);
-      }
-      return url;
-    }
-
-    /**
-     * Server 2 — WarezCDN.
-     *   movie:  https://embed.warezcdn.com/filme/{tmdbId}
-     *   tv:     https://embed.warezcdn.com/serie/{tmdbId}/{season}/{episode}
-     */
-    function buildWarezCDNUrl(mediaType, tmdbId, season, episode) {
-      var base = 'https://embed.warezcdn.com';
-      if (mediaType === 'movie') {
-        return base + '/filme/' + encodeURIComponent(tmdbId);
-      }
-      return base + '/serie/' + encodeURIComponent(tmdbId) +
-             '/' + encodeURIComponent(season || 1) +
-             '/' + encodeURIComponent(episode || 1);
-    }
-
-    /**
-     * Registro de provedores. Cada server expõe:
-     *   - id:    identificador chave (string)
-     *   - name:  label exibido na UI
-     *   - build: fn(mediaType, tmdbId, season, episode) → string URL
-     */
-    var SERVERS = {
-      '1': { id: '1', name: 'BetterFlix',  build: buildBetterFlixUrl },
-      '2': { id: '2', name: 'WarezCDN',    build: buildWarezCDNUrl   },
-    };
-
-    /**
-     * Preferência de servidor persistida em localStorage.
-     * Default: '1' (BetterFlix). Se o valor salvo não existir mais
-     * no registro (ex: removemos um server), cai para '1'.
-     */
-    function readServerPref() {
-      try {
-        var v = localStorage.getItem(SERVER_PREF_KEY);
-        return SERVERS[v] ? v : '1';
-      } catch (e) { return '1'; }
-    }
-    function writeServerPref(s) {
-      try { localStorage.setItem(SERVER_PREF_KEY, s); } catch (e) { /* private mode */ }
-    }
 
     var state = {
       isOpen: false,
@@ -3045,7 +2981,6 @@
       currentSeason: null,
       currentEpisode: null,
       currentEpisodeTitle: null,
-      currentServer: readServerPref(),
       loadTimerId: 0,
       cleanups: null,
       lastFocused: null,
@@ -3059,12 +2994,11 @@
     var isWatching = false;
 
     /**
-     * Dispatcher — devolve a URL construída pelo provedor ativo.
-     * Fallback defensivo: server desconhecido → BetterFlix ('1').
+     * Dispatcher — devolve a URL do BetterFlix (padrão).
+     * O fallback para WarezCDN é tratado automaticamente no createIframe().
      */
-    function buildPlayerUrl(server, mediaType, tmdbId, season, episode) {
-      var s = SERVERS[server] || SERVERS['1'];
-      return s.build(mediaType, tmdbId, season, episode);
+    function buildPlayerUrl(mediaType, tmdbId, season, episode) {
+      return buildBetterFlixUrl(mediaType, tmdbId, season, episode);
     }
 
     /**
@@ -3303,9 +3237,6 @@
       state.currentEpisodeTitle = episodeTitle || null;
 
       applyViewClass('player');
-      // Sincroniza a UI das tabs com a preferência atual (importante quando
-      // o user trocou de server numa sessão e abre outro conteúdo agora).
-      syncServerTabsUI();
       createIframe(state.currentItem, season, episode);
 
       // FASE 8 — toda entrada no player é um "play" → registra no histórico.
@@ -3333,110 +3264,10 @@
       setTimeout(function () { try { $back.focus(); } catch (e) {} }, 0);
     }
 
-    /**
-     * Resolve e navega para o próximo episódio.
-     * Usa o índice da lista renderizada (getCurrentList) para progressão
-     * linear — evita pular episódios em séries com numbering não sequencial.
-     * Se estiver no último ep da temporada, delega pra resolveNextEpisode
-     * (cross-season). Tudo protegido com try/catch + null guards.
-     */
-    function goToNextEpisode() {
-      try {
-        if (!state.currentItem || state.currentItem.mediaType !== 'tv') return;
-        if (state.currentSeason == null || state.currentEpisode == null) return;
-        if (!state.isOpen) return;
-
-        var btn = $nextEpBtn;
-        if (btn) btn.disabled = true;
-
-        // Passo 1: busca index-based na lista atual (cache quente).
-        var list = SeriesEpisodes.getCurrentList();
-        if (list && list.length) {
-          var currentIndex = -1;
-          for (var i = 0; i < list.length; i++) {
-            if (list[i].number === state.currentEpisode) {
-              currentIndex = i;
-              break;
-            }
-          }
-
-          if (currentIndex >= 0 && currentIndex < list.length - 1) {
-            var nextEp = list[currentIndex + 1];
-            if (nextEp && nextEp.number != null) {
-              enterPlayerView(state.currentSeason, nextEp.number, nextEp.name || null);
-              if (btn) btn.disabled = false;
-              return;
-            }
-          }
-        }
-
-        // Passo 2: último da temporada — resolve cross-season.
-        SeriesEpisodes.resolveNextEpisode(
-          state.currentItem.tmdbId,
-          state.currentSeason,
-          state.currentEpisode
-        ).then(function (next) {
-          if (!next || next.season == null || next.episode == null) return;
-          if (!state.isOpen || !state.currentItem) return;
-          enterPlayerView(next.season, next.episode, next.title || null);
-        }).catch(function (err) {
-          console.warn('[ContentModal] goToNextEpisode cross-season falhou:', err);
-        }).then(function () {
-          if (btn) btn.disabled = false;
-        });
-      } catch (err) {
-        console.error('[ContentModal] goToNextEpisode erro:', err);
-        if ($nextEpBtn) $nextEpBtn.disabled = false;
-      }
-    }
-
-    /**
-     * Tenta avançar 10s no vídeo dentro do iframe.
-     * Se o iframe for cross-origin (CORS), esconde o botão silenciosamente.
-     */
-    function skipForward() {
-      if (!state.iframe) return;
-      try {
-        var doc = state.iframe.contentDocument || state.iframe.contentWindow.document;
-        var video = doc.querySelector('video');
-        if (video) {
-          video.currentTime += 10;
-        }
-      } catch (e) {
-        if ($skipBtn) $skipBtn.hidden = true;
-      }
-    }
-
-    /**
-     * FASE 8 — Troca o servidor mantendo o S/E atual.
-     *
-     * Re-cria o iframe com a nova URL. Não dispara HistoryService (não é
-     * uma "nova vez assistindo", apenas troca de fonte do mesmo episódio).
-     */
-    function setServer(nextServer) {
-      if (!SERVERS[nextServer] || nextServer === state.currentServer) return;
-      state.currentServer = nextServer;
-      writeServerPref(nextServer);
-      syncServerTabsUI();
-
-      // Se já estamos no player view, recria o iframe imediatamente.
-      // Caso contrário, a próxima entrada usará o novo server.
-      if (state.view === 'player' && state.currentItem) {
-        createIframe(state.currentItem, state.currentSeason, state.currentEpisode);
-      }
-    }
-
-    function syncServerTabsUI() {
-      var tabs = $playerView.querySelectorAll('.player__server');
-      Array.prototype.forEach.call(tabs, function (t) {
-        var active = t.dataset.server === state.currentServer;
-        t.classList.toggle('player__server--active', active);
-        t.setAttribute('aria-selected', active ? 'true' : 'false');
-      });
-    }
+    /* ---- Progress Tracker (engajamento de viewport) ---- */
 
     /*
-     * FASE 6 — Volta para a view de detalhes. Destrói o iframe (libera
+     * Volta para a view de detalhes. Destrói o iframe (libera
      * banda imediatamente — comportamento equivalente ao close, exceto
      * que o modal continua aberto).
      */
@@ -3460,13 +3291,6 @@
       $detailsView.hidden = view !== 'details';
       $playerView.hidden  = view !== 'player';
       $back.hidden = view !== 'player';
-
-      var isPlayer = view === 'player';
-      var isTv = state.currentItem && state.currentItem.mediaType === 'tv';
-      var hasSE = state.currentSeason != null && state.currentEpisode != null;
-
-      if ($nextEpBtn) $nextEpBtn.hidden = !(isPlayer && isTv && hasSE);
-      if ($skipBtn) $skipBtn.hidden = !isPlayer;
 
       if (view === 'details') {
         $title.textContent = state.currentItem ? state.currentItem.title : 'Detalhes';
@@ -3544,32 +3368,32 @@
       state.iframe = iframe;
       container.appendChild(iframe);
 
-      // URL do provedor ativo → src síncrono.
-      var url = buildPlayerUrl(state.currentServer, item.mediaType, item.tmdbId, season, episode);
+      // BetterFlix como padrão → src síncrono.
+      var url = buildPlayerUrl(item.mediaType, item.tmdbId, season, episode);
       iframe.src = url;
-      console.log('[Player] Carregando:', SERVERS[state.currentServer].name, url);
+      console.log('[Player] Carregando BetterFlix:', url);
 
-      // Timeout + fallback automático para Servidor 2 se o atual falhar.
+      // Timeout + fallback silencioso para WarezCDN se BetterFlix falhar.
       var fallbackUsed = false;
       state.loadTimerId = setTimeout(function () {
         if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
 
-        // Se já estamos no Server 2 (ou fallback já rodou), falha definitiva.
-        if (state.currentServer === '2' || fallbackUsed) {
+        // Se fallback já rodou, falha definitiva.
+        if (fallbackUsed) {
           onIframeFail(new Error('iframe load timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms)'));
           return;
         }
 
-        // Fallback: tenta WarezCDN (Server 2) automaticamente.
+        // Fallback silencioso: troca src para WarezCDN automaticamente.
         fallbackUsed = true;
-        var fallbackUrl = buildPlayerUrl('2', item.mediaType, item.tmdbId, season, episode);
-        console.warn('[Player] Timeout no ' + SERVERS[state.currentServer].name + ' — fallback para WarezCDN:', fallbackUrl);
+        var fallbackUrl = buildWarezCDNUrl(item.mediaType, item.tmdbId, season, episode);
+        console.warn('[Player] BetterFlix timeout — fallback silencioso para WarezCDN:', fallbackUrl);
         iframe.src = fallbackUrl;
 
-        // Segundo timeout: se o fallback também falhar, erro definitivo.
+        // Segundo timeout: se WarezCDN também falhar, erro definitivo.
         state.loadTimerId = setTimeout(function () {
           if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
-          onIframeFail(new Error('Fallback WarezCDN também falhou (timeout)'));
+          onIframeFail(new Error('WarezCDN fallback também falhou (timeout)'));
         }, IFRAME_LOAD_TIMEOUT_MS);
       }, IFRAME_LOAD_TIMEOUT_MS);
 
@@ -3676,19 +3500,6 @@
       if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
       var loading = $mount.querySelector('.player__loading');
       if (loading) loading.remove();
-
-      // CORS probe: tenta acessar o documento do iframe.
-      // Se bloqueado, esconde o botão +10s (não há como manipular o vídeo).
-      if ($skipBtn && state.iframe) {
-        try {
-          var doc = state.iframe.contentDocument || state.iframe.contentWindow.document;
-          if (!doc || !doc.querySelector('video')) {
-            $skipBtn.hidden = true;
-          }
-        } catch (e) {
-          $skipBtn.hidden = true;
-        }
-      }
     }
 
     function onIframeFail(err) {
@@ -3749,7 +3560,6 @@
       link.rel = 'noopener noreferrer';
       if (state.currentItem) {
         link.href = buildPlayerUrl(
-          state.currentServer,
           state.currentItem.mediaType,
           state.currentItem.tmdbId,
           state.currentSeason,
@@ -3765,29 +3575,6 @@
       box.appendChild(actions);
       $mount.appendChild(box);
     }
-
-    /**
-     * FASE 8 — Server tabs delegation. Listener no $playerView (e não em
-     * cada botão) sobrevive a re-renders e funciona via Enter/Space porque
-     * <button> tem comportamento de click nativo no Enter.
-     *
-     * Listener registrado UMA vez no boot do IIFE — não é por modal-open,
-     * então não passa pelo AbortController do open().
-     */
-    $playerView.addEventListener('click', function (e) {
-      var serverBtn = e.target.closest('.player__server');
-      if (serverBtn && $playerView.contains(serverBtn)) {
-        setServer(serverBtn.dataset.server);
-        return;
-      }
-      if (e.target.closest('#btn-next-ep')) {
-        goToNextEpisode();
-        return;
-      }
-      if (e.target.closest('#btn-skip-10')) {
-        skipForward();
-      }
-    });
 
     // API pública do módulo.
     return { open: open, close: close };
