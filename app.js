@@ -3043,13 +3043,17 @@
     var isWatching = false;
 
     /**
-     * Server 1 — Superflix. URL encurtada com params em PT-BR e cache buster.
+     * Server 1 — Superflix. Refatorado para modo Embed para evitar X-Frame-Options Block.
      */
     function buildSuperflixUrl(mediaType, tmdbId, season, episode) {
       if (mediaType === 'movie') {
-        return SUPERFLIX_BASE + '/filme/' + encodeURIComponent(tmdbId);
+        // Tentei /embed/ para filmes, se não funcionar, o padrão costuma ser /embed/movie/
+        return SUPERFLIX_BASE + '/embed/' + encodeURIComponent(tmdbId);
       }
-      return SUPERFLIX_BASE + '/serie/' + encodeURIComponent(tmdbId) +
+      
+      // Aqui está a mágica: trocamos /serie/ por /embed/
+      // Isso força a carregamento do player direto, ignorando os bloqueios da página mãe.
+      return SUPERFLIX_BASE + '/embed/' + encodeURIComponent(tmdbId) +
              '/' + encodeURIComponent(season || 1) +
              '/' + encodeURIComponent(episode || 1);
     }
