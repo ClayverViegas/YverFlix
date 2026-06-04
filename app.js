@@ -3378,7 +3378,7 @@
       state.iframe = iframe;
 
       // --- BetterFlix como provedor padrão ---
-      var primaryUrl = buildBetterFlixUrl(item.mediaType, item.tmdbId, season, episode);
+      var primaryUrl = buildWarezCDNUrl(item.mediaType, item.tmdbId, season, episode);
       iframe.src = primaryUrl;
       console.log('[Player] Carregando BetterFlix:', primaryUrl);
 
@@ -3407,10 +3407,10 @@
         if (iframeLoaded) return;
         if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
 
-        // Fallback: troca o src para WarezCDN silenciosamente.
-        var fallbackUrl = buildWarezCDNUrl(item.mediaType, item.tmdbId, season, episode);
-        console.warn('[Player] BetterFlix timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms) — fallback para WarezCDN:', fallbackUrl);
-        iframe.src = fallbackUrl;
+       // Fallback: troca o src para BetterFlix silenciosamente.
+var fallbackUrl = buildBetterFlixUrl(item.mediaType, item.tmdbId, season, episode);
+console.warn('[Player] WarezCDN timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms) - fallback para BetterFlix:', fallbackUrl);
+iframe.src = fallbackUrl;
 
         // Segundo timer: se WarezCDN também não carregar, erro definitivo.
         state.loadTimerId = setTimeout(function () {
