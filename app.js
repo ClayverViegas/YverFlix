@@ -2967,12 +2967,6 @@
     var $mount          = document.getElementById('player-mount');
     var $closeBtns      = $modal.querySelectorAll('[data-modal-close]');
 
-    /**
-     * Timeout (ms) para carregamento do iframe. Se o BetterFlix não disparar
-     * 'load' dentro desse tempo, fallback silencioso para WarezCDN.
-     */
-    var IFRAME_LOAD_TIMEOUT_MS = 8000;
-
     var state = {
       isOpen: false,
       view: 'details',
@@ -2981,9 +2975,9 @@
       currentSeason: null,
       currentEpisode: null,
       currentEpisodeTitle: null,
-      loadTimerId: 0,
       cleanups: null,
       lastFocused: null,
+      activeServer: 'betterflix', // Default server
     };
 
     /**
@@ -2991,25 +2985,25 @@
      * Cada um recebe (mediaType, tmdbId, season, episode) e devolve a URL
      * completa para o iframe.src.
      */
-    function buildBetterFlixUrl(mediaType, tmdbId, season, episode) {
-      var base = 'https://betterflix.click/api/player';
-      var type = mediaType === 'movie' ? 'movie' : 'tv';
-      var url = base + '?id=' + encodeURIComponent(tmdbId) + '&type=' + type + '&source=server2';
-      if (type === 'tv') {
-        url += '&season=' + encodeURIComponent(season || 1) +
-               '&episode=' + encodeURIComponent(episode || 1);
+    function trocarIframePlayer(provedor, id, type, s, e) {
+      if (provedor === 'warezcdn') {
+        var typeStr = type === 'movie' ? 'filme' : 'serie';
+        var url = 'https://warezcdn.lat/' + typeStr + '/' + encodeURIComponent(id);
+        if (type === 'tv') {
+          url += '/' + encodeURIComponent(s || 1) + '/' + encodeURIComponent(e || 1);
+        }
+        return url;
+      } else {
+        // Fallback/Default: betterflix
+        var typeVal = type === 'movie' ? 'movie' : 'tv';
+        var seasonVal = typeVal === 'tv' ? (s || 1) : '';
+        var episodeVal = typeVal === 'tv' ? (e || 1) : '';
+        return 'https://betterflix.click/api/player?id=' + encodeURIComponent(id) +
+               '&type=' + encodeURIComponent(typeVal) +
+               '&season=' + encodeURIComponent(seasonVal) +
+               '&episode=' + encodeURIComponent(episodeVal) +
+               '&source=source3';
       }
-      return url;
-    }
-
-    function buildWarezCDNUrl(mediaType, tmdbId, season, episode) {
-      var base = 'https://embed.warezcdn.com';
-      if (mediaType === 'movie') {
-        return base + '/filme/' + encodeURIComponent(tmdbId);
-      }
-      return base + '/serie/' + encodeURIComponent(tmdbId) +
-             '/' + encodeURIComponent(season || 1) +
-             '/' + encodeURIComponent(episode || 1);
     }
 
     var openGeneration = 0;
@@ -3041,6 +3035,7 @@
       state.currentSeason = null;
       state.currentEpisode = null;
       state.currentEpisodeTitle = null;
+      state.activeServer = 'betterflix';
       state.lastFocused = document.activeElement;
 
       state.cleanups = new AbortController();
@@ -3359,66 +3354,36 @@
       // --- Construção do iframe ---
       var iframe = document.createElement('iframe');
 
-      // Estilos inline: posicionamento absoluto → preenche 100% do mount.
+      // Estilos inline: posicionamento relativo para fluxo normal
       iframe.style.width = '100%';
       iframe.style.height = '100%';
       iframe.style.border = 'none';
-      iframe.style.position = 'absolute';
-      iframe.style.inset = '0';
+      iframe.style.position = 'relative';
       iframe.style.background = '#000';
 
       // Atributos de permissão (autoplay, PIP, fullscreen, clipboard).
       iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write');
       iframe.setAttribute('allowfullscreen', 'true');
-      iframe.setAttribute('webkitallowfullscreen', '');
-      iframe.setAttribute('mozallowfullscreen', '');
-      iframe.title = 'Player de vídeo — ' + (item.title || 'mídia');
-      iframe.referrerPolicy = 'no-referrer';
 
       state.iframe = iframe;
 
-      // --- BetterFlix como provedor padrão ---
-      var primaryUrl = buildBetterFlixUrl(item.mediaType, item.tmdbId, season, episode);
-      iframe.src = primaryUrl;
-      console.log('[Player] Carregando BetterFlix:', primaryUrl);
-
-      // Flag de controle: onload zera o timer e impede o fallback.
-      var iframeLoaded = false;
-
-      // onload via propriedade: mais leve que addEventListener,
-      // e sobrescreve qualquer handler anterior (seguro contra re-injeção).
+      // Adiciona classe de loading e listener onload
+      iframe.classList.add('loading');
       iframe.onload = function () {
-        iframeLoaded = true;
-        if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
-        console.log('[Player] Iframe carregado com sucesso.');
+        iframe.classList.remove('loading');
       };
 
-      iframe.onerror = function () {
-        console.error('[Player] Iframe emitiu erro de rede.');
-        onIframeFail(new Error('iframe onerror'));
-      };
+      // URL baseada no servidor ativo
+      var url = trocarIframePlayer(state.activeServer, item.tmdbId, item.mediaType, season, episode);
+      console.log('[Player] Carregando ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'BetterFlix') + ':', url);
+
+      iframe.src = url;
 
       // Injeta no DOM.
       $mount.appendChild(iframe);
 
-      // --- Sistema de fallback silencioso (8 segundos) ---
-      state.loadTimerId = setTimeout(function () {
-        // Guards: modal fechado, iframe destruído, ou já carregou.
-        if (iframeLoaded) return;
-        if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
-
-        // Fallback: troca o src para WarezCDN silenciosamente.
-        var fallbackUrl = buildWarezCDNUrl(item.mediaType, item.tmdbId, season, episode);
-        console.warn('[Player] BetterFlix timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms) — fallback para WarezCDN:', fallbackUrl);
-        iframe.src = fallbackUrl;
-
-        // Segundo timer: se WarezCDN também não carregar, erro definitivo.
-        state.loadTimerId = setTimeout(function () {
-          if (iframeLoaded) return;
-          if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
-          onIframeFail(new Error('WarezCDN também falhou (timeout)'));
-        }, IFRAME_LOAD_TIMEOUT_MS);
-      }, IFRAME_LOAD_TIMEOUT_MS);
+      // Injeta o seletor de servidores por cima
+      injetarSeletorDeServidores(item.tmdbId, item.mediaType, season, episode);
     }
 
     /*
@@ -3428,8 +3393,6 @@
     function destroyIframe() {
       saveCurrentProgress(true);
       stopProgressTracker();
-
-      if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
 
       if (state.iframe) {
         // about:blank antes de remover: corta áudio/banda no Chromium.
@@ -3441,6 +3404,125 @@
 
       // Limpa TUDO do mount (iframe, tela de erro, barrier, etc).
       $mount.innerHTML = '';
+    }
+
+    /**
+     * Injeta o seletor de servidores (botões flutuantes) por cima do player de vídeo.
+     * Mapeia os servidores BetterFlix e WarezCDN e cuida do chaveamento reativo.
+     *
+     * @param {number} tmdbId
+     * @param {'movie'|'tv'} type
+     * @param {number|null} season
+     * @param {number|null} episode
+     */
+    function injetarSeletorDeServidores(tmdbId, type, season, episode) {
+      if (!state.currentItem) return;
+
+      // Remove qualquer seletor anterior para evitar duplicidade
+      var oldSelector = $mount.querySelector('.player-servers');
+      if (oldSelector) {
+        oldSelector.remove();
+      }
+
+      var container = document.createElement('div');
+      container.className = 'player-servers';
+      container.setAttribute('role', 'group');
+      container.setAttribute('aria-label', 'Seletor de Servidores');
+
+      var servers = [
+        { id: 'betterflix', name: 'BetterFlix', icon: '⚡' },
+        { id: 'warezcdn', name: 'WarezCDN', icon: '🛡️' }
+      ];
+
+      servers.forEach(function (server) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'player-server-btn';
+        btn.dataset.server = server.id;
+        
+        var isCurrent = state.activeServer === server.id;
+        btn.classList.toggle('player-server-btn--active', isCurrent);
+        btn.setAttribute('aria-pressed', isCurrent ? 'true' : 'false');
+
+        // Cria o conteúdo do botão com ícone + texto
+        btn.innerHTML = '<span class="player-server-icon" aria-hidden="true">' + server.icon + '</span> ' +
+                        '<span>' + server.name + '</span>';
+
+        btn.addEventListener('click', function () {
+          switchServer(server.id);
+        });
+
+        container.appendChild(btn);
+      });
+
+      // Estilização do selectorContainer
+      container.style.position = 'relative';
+      container.style.top = 'auto';
+      container.style.right = 'auto';
+      container.style.display = 'flex';
+      container.style.justifyContent = 'flex-end';
+      container.style.marginBottom = '8px';
+
+      // Injeta como primeiro filho para ficar empilhado acima do iframe
+      $mount.insertBefore(container, $mount.firstChild);
+    }
+
+    /**
+     * Chaveia de forma dinâmica o iframe do player, caçando e destruindo o anterior
+     * de forma estrita para evitar memory leaks na GPU do Android.
+     *
+     * @param {'betterflix'|'warezcdn'} newServer
+     */
+    function switchServer(newServer) {
+      if (!state.currentItem) return;
+      if (state.activeServer === newServer) return;
+      state.activeServer = newServer;
+
+      // 1. Caçar e destruir de forma estrita o iframe anterior usando element.remove()
+      var oldIframe = $mount.querySelector('iframe');
+      if (oldIframe) {
+        try { oldIframe.src = 'about:blank'; } catch (e) {}
+        oldIframe.remove();
+      }
+      state.iframe = null;
+
+      // 2. Criar e injetar o novo iframe
+      var iframe = document.createElement('iframe');
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = 'none';
+      iframe.style.position = 'relative';
+      iframe.style.background = '#000';
+      iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write');
+      iframe.setAttribute('allowfullscreen', 'true');
+
+      // Adiciona classe de loading e listener onload
+      iframe.classList.add('loading');
+      iframe.onload = function () {
+        iframe.classList.remove('loading');
+      };
+
+      var url = trocarIframePlayer(state.activeServer, state.currentItem.tmdbId, state.currentItem.mediaType, state.currentSeason, state.currentEpisode);
+      console.log('[Player] Chaveando para ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'BetterFlix') + ':', url);
+
+      iframe.src = url;
+      state.iframe = iframe;
+
+      // Injeta o novo iframe após o contêiner do seletor para respeitar o fluxo normal do DOM
+      var selectorContainer = $mount.querySelector('.player-servers');
+      if (selectorContainer) {
+        $mount.insertBefore(iframe, selectorContainer.nextSibling);
+      } else {
+        $mount.appendChild(iframe);
+      }
+
+      // Atualizar o destaque visual dos botões
+      var buttons = $mount.querySelectorAll('.player-server-btn');
+      buttons.forEach(function (btn) {
+        var isCurrent = btn.dataset.server === state.activeServer;
+        btn.classList.toggle('player-server-btn--active', isCurrent);
+        btn.setAttribute('aria-pressed', isCurrent ? 'true' : 'false');
+      });
     }
 
     /**
@@ -3541,9 +3623,10 @@
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       if (state.currentItem) {
-        link.href = buildBetterFlixUrl(
-          state.currentItem.mediaType,
+        link.href = trocarIframePlayer(
+          state.activeServer,
           state.currentItem.tmdbId,
+          state.currentItem.mediaType,
           state.currentSeason,
           state.currentEpisode
         );
@@ -3559,7 +3642,7 @@
     }
 
     // API pública do módulo.
-    return { open: open, close: close };
+    return { open: open, close: close, injetarSeletorDeServidores: injetarSeletorDeServidores };
   })();
 
   /* ==========================================================================
