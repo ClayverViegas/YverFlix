@@ -2079,3 +2079,499 @@ body {
 .player-server-icon {
   font-size: 0.9rem;
 }
+
+/* ============================================================
+   PÁGINA DE DOWNLOAD DO APK (ESTÉTICA DARK CYBERPUNK)
+   ============================================================ */
+
+/* ---- Reset local / Font scope para a página de download ---- */
+.dl-page {
+  background: #0a0a0a !important;
+  background-image: 
+    radial-gradient(1000px 500px at 50% -10%, rgba(138, 43, 226, 0.15), transparent 70%), 
+    radial-gradient(800px 400px at 0% 80%, rgba(75, 0, 130, 0.1), transparent 60%), 
+    radial-gradient(800px 400px at 100% 40%, rgba(138, 43, 226, 0.08), transparent 60%) !important;
+  color: #eef1f4 !important;
+  font-family: 'Outfit', system-ui, -apple-system, sans-serif !important;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Header ---- */
+.dl-header {
+  border-bottom: 1px solid rgba(138, 43, 226, 0.2);
+  background: rgba(10, 10, 10, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.dl-header__inner {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dl-brand {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+.dl-brand:hover {
+  transform: scale(1.05);
+}
+.dl-brand__img {
+  height: 48px;
+  width: auto;
+  display: block;
+}
+
+/* ---- Container ---- */
+.dl-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+/* ---- Hero Section ---- */
+.dl-hero {
+  text-align: center;
+  padding: 40px 0 60px;
+  position: relative;
+}
+.dl-hero__badge {
+  display: inline-block;
+  padding: 6px 14px;
+  background: rgba(138, 43, 226, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #c084fc;
+  border-radius: 99px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 16px;
+  box-shadow: 0 0 15px rgba(138, 43, 226, 0.15);
+}
+.dl-hero__title {
+  margin: 0 0 16px;
+  font-size: clamp(2.2rem, 6vw, 3.8rem);
+  font-weight: 800;
+  line-height: 1.15;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+}
+.dl-hero__title span {
+  background: linear-gradient(135deg, #a855f7 0%, #8a2be2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 20px rgba(138, 43, 226, 0.2);
+}
+.dl-hero__subtitle {
+  margin: 0 auto 32px;
+  font-size: clamp(1rem, 2vw, 1.15rem);
+  color: #93a0ad;
+  max-width: 600px;
+  line-height: 1.6;
+}
+
+/* ---- Botão Neon ---- */
+.dl-hero__action {
+  margin-bottom: 32px;
+}
+.dl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 40px;
+  background: linear-gradient(135deg, #8A2BE2 0%, #4B0082 100%);
+  color: #ffffff !important;
+  text-decoration: none;
+  font-size: 1.15rem;
+  font-weight: 700;
+  border-radius: 99px;
+  border: 1px solid rgba(168, 85, 247, 0.6);
+  box-shadow: 
+    0 0 25px rgba(138, 43, 226, 0.45), 
+    0 8px 30px rgba(0, 0, 0, 0.5), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+.dl-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: all 0.6s ease;
+}
+.dl-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: 
+    0 0 35px rgba(138, 43, 226, 0.75), 
+    0 12px 40px rgba(0, 0, 0, 0.6), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  border-color: rgba(168, 85, 247, 0.9);
+}
+.dl-btn:hover::before {
+  left: 100%;
+}
+.dl-btn:active {
+  transform: translateY(1px);
+  box-shadow: 
+    0 0 15px rgba(138, 43, 226, 0.4), 
+    0 4px 10px rgba(0, 0, 0, 0.4);
+}
+.dl-btn__icon {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.dl-btn:hover .dl-btn__icon {
+  transform: translateY(2px);
+}
+
+/* ---- Metadados ---- */
+.dl-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.dl-meta__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.dl-meta__label {
+  font-size: 0.78rem;
+  color: #5f6b78;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.dl-meta__value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #eef1f4;
+}
+.dl-meta__divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(138, 43, 226, 0.2);
+}
+
+/* ---- Segurança (Transparência) ---- */
+.dl-security {
+  margin: 20px auto 60px;
+  max-width: 840px;
+}
+.dl-security__box {
+  background: rgba(15, 15, 20, 0.6);
+  border: 1px solid rgba(138, 43, 226, 0.25);
+  border-radius: 20px;
+  padding: 32px;
+  display: flex;
+  gap: 24px;
+  box-shadow: 
+    0 20px 50px rgba(0, 0, 0, 0.6), 
+    inset 0 1px 1px rgba(138, 43, 226, 0.1);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.dl-security__icon-wrap {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: rgba(138, 43, 226, 0.1);
+  border: 1px solid rgba(138, 43, 226, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 15px rgba(138, 43, 226, 0.1);
+}
+.dl-security__content {
+  flex-grow: 1;
+}
+.dl-security__title {
+  margin: 0 0 12px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+.dl-security__text {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  color: #93a0ad;
+  line-height: 1.6;
+}
+.dl-security__subtext {
+  margin: 0 0 20px;
+  font-size: 0.88rem;
+  color: #5f6b78;
+  font-style: italic;
+}
+.dl-security__badges {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.dl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(138, 43, 226, 0.08);
+  border: 1px solid rgba(138, 43, 226, 0.2);
+  color: #c084fc;
+  border-radius: 99px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.dl-badge svg {
+  color: #a855f7;
+}
+
+/* ---- Passo a Passo ---- */
+.dl-steps {
+  margin-top: 60px;
+}
+.dl-steps__heading {
+  text-align: center;
+  margin-bottom: 36px;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+.dl-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+/* Cards de Passo */
+.dl-card {
+  position: relative;
+  background: rgba(15, 15, 20, 0.5);
+  border: 1px solid rgba(138, 43, 226, 0.15);
+  border-radius: 18px;
+  padding: 30px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+.dl-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(138, 43, 226, 0.3);
+  box-shadow: 
+    0 20px 45px rgba(0, 0, 0, 0.5), 
+    0 0 15px rgba(138, 43, 226, 0.05);
+}
+.dl-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.dl-card__num {
+  font-size: 2.2rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #a855f7 0%, #4b0082 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1;
+}
+.dl-card__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #93a0ad;
+}
+.dl-card__title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+.dl-card__desc {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #93a0ad;
+  line-height: 1.6;
+  flex-grow: 1;
+}
+
+/* Destaque para o Passo 3 (Play Protect) */
+.dl-card--highlighted {
+  border: 1px solid rgba(168, 85, 247, 0.7);
+  background: linear-gradient(180deg, rgba(75, 0, 130, 0.15) 0%, rgba(10, 10, 10, 0.8) 100%);
+  box-shadow: 
+    0 15px 35px rgba(138, 43, 226, 0.2), 
+    0 0 20px rgba(168, 85, 247, 0.15);
+  animation: dl-pulse-border 3s ease-in-out infinite;
+}
+.dl-card--highlighted .dl-card__glow {
+  position: absolute;
+  top: -150px; left: -150px;
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+.dl-card--highlighted .dl-card__icon--alert {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+  animation: dl-pulse-alert 1.5s ease-in-out infinite;
+}
+.dl-card--highlighted .dl-card__num {
+  background: linear-gradient(135deg, #f43f5e 0%, #a855f7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.dl-card--highlighted:hover {
+  border-color: rgba(168, 85, 247, 0.9);
+  box-shadow: 
+    0 20px 45px rgba(138, 43, 226, 0.3), 
+    0 0 30px rgba(168, 85, 247, 0.25);
+}
+
+/* Destaques de texto */
+.dl-highlight-purple {
+  color: #c084fc;
+}
+.dl-highlight-red {
+  color: #ef4444;
+}
+.dl-highlight-green {
+  color: #22c55e;
+}
+
+/* ---- Footer ---- */
+.dl-footer {
+  text-align: center;
+  padding: 40px 24px;
+  border-top: 1px solid rgba(138, 43, 226, 0.15);
+  color: #5f6b78;
+  font-size: 0.85rem;
+  margin-top: 60px;
+}
+
+/* ---- Keyframe Animations ---- */
+@keyframes dl-pulse-border {
+  0%, 100% {
+    border-color: rgba(168, 85, 247, 0.6);
+    box-shadow: 0 15px 35px rgba(138, 43, 226, 0.18), 0 0 15px rgba(168, 85, 247, 0.1);
+  }
+  50% {
+    border-color: rgba(168, 85, 247, 1);
+    box-shadow: 0 15px 35px rgba(138, 43, 226, 0.35), 0 0 25px rgba(168, 85, 247, 0.3);
+  }
+}
+
+@keyframes dl-pulse-alert {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.1);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+  }
+}
+
+/* ---- Media Queries (Mobile Responsivo) ---- */
+@media (max-width: 900px) {
+  .dl-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+  /* Card de Destaque ocupa as duas colunas no layout de 2 colunas para melhor legibilidade */
+  .dl-grid .dl-card--highlighted {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 720px) {
+  .dl-security__box {
+    flex-direction: column;
+    padding: 24px;
+    align-items: center;
+    text-align: center;
+  }
+  .dl-security__badges {
+    justify-content: center;
+  }
+  .dl-container {
+    padding: 20px 16px 60px;
+  }
+  .dl-hero {
+    padding: 20px 0 40px;
+  }
+  .dl-meta {
+    gap: 12px;
+  }
+  .dl-meta__divider {
+    display: none;
+  }
+  .dl-meta__item {
+    flex: 0 0 45%;
+    background: rgba(255, 255, 255, 0.02);
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+}
+
+@media (max-width: 580px) {
+  .dl-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .dl-grid .dl-card--highlighted {
+    grid-column: span 1;
+  }
+  .dl-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 16px 24px;
+    font-size: 1.1rem;
+  }
+  .dl-hero__title {
+    font-size: 2.2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dl-btn, .dl-card, .dl-brand, .dl-btn__icon {
+    transition: none !important;
+    animation: none !important;
+  }
+  .dl-card--highlighted {
+    animation: none !important;
+  }
+  .dl-card__icon--alert {
+    animation: none !important;
+  }
+}

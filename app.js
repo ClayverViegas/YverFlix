@@ -240,7 +240,7 @@
 
     try {
       var fetchOpts = { signal: controller.signal };
-      if (options.method)  fetchOpts.method  = options.method;
+      if (options.method) fetchOpts.method = options.method;
       if (options.headers) fetchOpts.headers = options.headers;
       if (options.body != null) fetchOpts.body = options.body;
       var response = await fetch(url, fetchOpts);
@@ -523,8 +523,8 @@
       var rd = data.release_dates && data.release_dates.results;
       if (!rd || !rd.length) return '';
       var pick = rd.find(function (r) { return r.iso_3166_1 === 'BR'; })
-              || rd.find(function (r) { return r.iso_3166_1 === 'US'; })
-              || rd[0];
+        || rd.find(function (r) { return r.iso_3166_1 === 'US'; })
+        || rd[0];
       var entries = (pick && pick.release_dates) || [];
       var found = entries.find(function (e) { return e.certification; });
       return found ? found.certification : '';
@@ -532,8 +532,8 @@
     var cr = data.content_ratings && data.content_ratings.results;
     if (!cr || !cr.length) return '';
     var pickTv = cr.find(function (r) { return r.iso_3166_1 === 'BR'; })
-              || cr.find(function (r) { return r.iso_3166_1 === 'US'; })
-              || cr[0];
+      || cr.find(function (r) { return r.iso_3166_1 === 'US'; })
+      || cr[0];
     return (pickTv && pickTv.rating) || '';
   }
 
@@ -702,10 +702,10 @@
   function createCard(item) {
     var fragment = cardTemplate.content.cloneNode(true);
     var article = fragment.querySelector('.card');
-    var img     = fragment.querySelector('.card__poster');
-    var title   = fragment.querySelector('.card__title');
-    var meta    = fragment.querySelector('.card__meta');
-    var rating  = fragment.querySelector('.card__rating');
+    var img = fragment.querySelector('.card__poster');
+    var title = fragment.querySelector('.card__title');
+    var meta = fragment.querySelector('.card__meta');
+    var rating = fragment.querySelector('.card__rating');
 
     /*
      * REQUISITO: guardar o TMDB id no próprio elemento HTML.
@@ -723,7 +723,7 @@
 
     // textContent (não innerHTML) → seguro contra XSS.
     title.textContent = item.title;
-    meta.textContent  = formatMeta(item);
+    meta.textContent = formatMeta(item);
 
     if (item.voteAverage > 0) {
       rating.textContent = item.voteAverage.toFixed(1);
@@ -747,8 +747,8 @@
     // FASE 6.3 — itens vindos de Minha Lista (Supabase) podem não ter
     // releaseDate, pois a tabela favorites guarda só o essencial.
     // Nesse caso mostramos só "Filme"/"Série" sem o "• —" feio.
-    var year  = item.releaseDate ? item.releaseDate.slice(0, 4) : '';
-    var kind  = item.type === 'movie' ? 'Filme' : 'Série';
+    var year = item.releaseDate ? item.releaseDate.slice(0, 4) : '';
+    var kind = item.type === 'movie' ? 'Filme' : 'Série';
     return year ? (kind + ' • ' + year) : kind;
   }
 
@@ -792,11 +792,11 @@
 
   /** Mensagem amigável de erro com base no tipo. */
   function humanizeError(err) {
-    if (err.name === 'TimeoutError')    return 'Tempo limite excedido. Verifique sua conexão.';
-    if (err.name === 'TypeError')       return 'Falha de rede.';
-    if (err.status === 401)             return 'Chave de API inválida.';
-    if (err.status === 404)             return 'Recurso não encontrado.';
-    if (err.status === 429)             return 'Muitas requisições. Tente em alguns instantes.';
+    if (err.name === 'TimeoutError') return 'Tempo limite excedido. Verifique sua conexão.';
+    if (err.name === 'TypeError') return 'Falha de rede.';
+    if (err.status === 401) return 'Chave de API inválida.';
+    if (err.status === 404) return 'Recurso não encontrado.';
+    if (err.status === 429) return 'Muitas requisições. Tente em alguns instantes.';
     if (typeof err.status === 'number') return 'Erro do servidor (' + err.status + ').';
     return err.message || 'Erro desconhecido.';
   }
@@ -889,9 +889,9 @@
         tmdbId: item.tmdbId,
         controller: new AbortController(),
         $container: $container,
-        $select:   $container.querySelector('.episodes__select'),
-        $loading:  $container.querySelector('.episodes-section__loading'),
-        $list:     $container.querySelector('.episodes-grid'),
+        $select: $container.querySelector('.episodes__select'),
+        $loading: $container.querySelector('.episodes-section__loading'),
+        $list: $container.querySelector('.episodes-grid'),
         $resumeBtn: null,
         onPlay: onPlay,
         // FASE 8 — resume é a temporada/ep que veio do "Continuar Assistindo".
@@ -907,9 +907,9 @@
       $container.hidden = false;
 
       // Listeners — todos com signal do AbortController p/ cleanup atômico.
-      c.$select.addEventListener('change', onSeasonChange,  { signal: c.controller.signal });
-      c.$list.addEventListener('click',    onEpisodeClick,  { signal: c.controller.signal });
-      c.$list.addEventListener('keydown',  onEpisodeKeydown, { signal: c.controller.signal });
+      c.$select.addEventListener('change', onSeasonChange, { signal: c.controller.signal });
+      c.$list.addEventListener('click', onEpisodeClick, { signal: c.controller.signal });
+      c.$list.addEventListener('keydown', onEpisodeKeydown, { signal: c.controller.signal });
 
       // Carrega detalhes + temporada inicial em PARALELO (reduz TTI da lista).
       loadInitial(item.tmdbId);
@@ -1235,7 +1235,7 @@
       btn.type = 'button';
       btn.className = 'btn btn--primary btn-resume-play';
       btn.innerHTML = '<span class="btn__icon" aria-hidden="true">▶</span>' +
-                      '<span>' + label + '</span>';
+        '<span>' + label + '</span>';
       btn.addEventListener('click', function () {
         if (current && typeof current.onPlay === 'function') {
           current.onPlay(targetSeason, targetEpisode, null);
@@ -1574,16 +1574,16 @@
         var detailsPromise = cachedDetails
           ? Promise.resolve(cachedDetails)
           : getDetails(item.mediaType, item.tmdbId, sig).then(function (d) {
-              detailsCache[item.tmdbId] = d;
-              return d;
-            });
+            detailsCache[item.tmdbId] = d;
+            return d;
+          });
 
         var creditsPromise = cachedCredits
           ? Promise.resolve(cachedCredits)
           : getCredits(item.mediaType, item.tmdbId, sig).then(function (c2) {
-              creditsCache[item.tmdbId] = c2;
-              return c2;
-            });
+            creditsCache[item.tmdbId] = c2;
+            return c2;
+          });
 
         var results = await Promise.all([detailsPromise, creditsPromise]);
 
@@ -1717,7 +1717,7 @@
         watch.type = 'button';
         watch.className = 'btn btn--primary';
         watch.innerHTML = '<span class="btn__icon" aria-hidden="true">▶</span>' +
-                          '<span>Assistir agora</span>';
+          '<span>Assistir agora</span>';
         watch.addEventListener('click', function () {
           // null/null → ContentModal sabe que é movie.
           if (current && typeof current.onPlay === 'function') current.onPlay(null, null);
@@ -2327,8 +2327,8 @@
     function onChanged(e) {
       var d = e && e.detail;
       if (!d || !d.item) return;
-      if (d.action === 'added')         addOne(d.item);
-      else if (d.action === 'removed')  removeOne(d.item);
+      if (d.action === 'added') addOne(d.item);
+      else if (d.action === 'removed') removeOne(d.item);
     }
 
     /**
@@ -2502,9 +2502,9 @@
     }
     function key(mediaType, tmdbId) { return mediaType + ':' + tmdbId; }
 
-    var pendingTimers   = Object.create(null);   // key -> timer id
+    var pendingTimers = Object.create(null);   // key -> timer id
     var pendingPayloads = Object.create(null);   // key -> payload
-    var sigCache        = Object.create(null);   // key -> last (season,episode) sent
+    var sigCache = Object.create(null);   // key -> last (season,episode) sent
 
     // Cache em memória do maior episódio assistido por (tmdbId, season).
     // Atualizado por touch() (síncrono) e getOne() (hidratação do DB).
@@ -2531,8 +2531,8 @@
         media_type: item.mediaType,
         title: item.title || null,
         poster_path: item.posterPath || null,
-        season:        ctx.season != null  ? ctx.season  : null,
-        episode:       ctx.episode != null ? ctx.episode : null,
+        season: ctx.season != null ? ctx.season : null,
+        episode: ctx.episode != null ? ctx.episode : null,
         episode_title: ctx.episodeTitle || null,
         updated_at: new Date().toISOString(),
       };
@@ -2957,15 +2957,15 @@
    *   - cleanups (AbortController de listeners do open)
    */
   var ContentModal = (function () {
-    var $modal          = document.getElementById('player-modal');
-    var $title          = document.getElementById('player-title');
-    var $back           = document.getElementById('modal-back');
-    var $detailsView    = document.getElementById('details-view');
+    var $modal = document.getElementById('player-modal');
+    var $title = document.getElementById('player-title');
+    var $back = document.getElementById('modal-back');
+    var $detailsView = document.getElementById('details-view');
     var $detailsContent = document.getElementById('details-content');
     var $detailsLoading = document.getElementById('details-loading');
-    var $playerView     = document.getElementById('player-view');
-    var $mount          = document.getElementById('player-mount');
-    var $closeBtns      = $modal.querySelectorAll('[data-modal-close]');
+    var $playerView = document.getElementById('player-view');
+    var $mount = document.getElementById('player-mount');
+    var $closeBtns = $modal.querySelectorAll('[data-modal-close]');
 
     var state = {
       isOpen: false,
@@ -2999,10 +2999,10 @@
         var seasonVal = typeVal === 'tv' ? (s || 1) : '';
         var episodeVal = typeVal === 'tv' ? (e || 1) : '';
         return 'https://betterflix.click/api/player?id=' + encodeURIComponent(id) +
-               '&type=' + encodeURIComponent(typeVal) +
-               '&season=' + encodeURIComponent(seasonVal) +
-               '&episode=' + encodeURIComponent(episodeVal) +
-               '&source=source3';
+          '&type=' + encodeURIComponent(typeVal) +
+          '&season=' + encodeURIComponent(seasonVal) +
+          '&episode=' + encodeURIComponent(episodeVal) +
+          '&source=source3';
       }
     }
 
@@ -3274,7 +3274,7 @@
 
       // Foco no botão Voltar (acessibilidade — user pode pressionar Enter
       // pra voltar ou Esc pra fechar).
-      setTimeout(function () { try { $back.focus(); } catch (e) {} }, 0);
+      setTimeout(function () { try { $back.focus(); } catch (e) { } }, 0);
     }
 
     /* ---- Progress Tracker (engajamento de viewport) ---- */
@@ -3302,7 +3302,7 @@
       $modal.classList.toggle('modal--view-details', view === 'details');
       $modal.classList.toggle('modal--view-player', view === 'player');
       $detailsView.hidden = view !== 'details';
-      $playerView.hidden  = view !== 'player';
+      $playerView.hidden = view !== 'player';
       $back.hidden = view !== 'player';
 
       if (view === 'details') {
@@ -3456,14 +3456,14 @@
         btn.type = 'button';
         btn.className = 'player-server-btn';
         btn.dataset.server = server.id;
-        
+
         var isCurrent = state.activeServer === server.id;
         btn.classList.toggle('player-server-btn--active', isCurrent);
         btn.setAttribute('aria-pressed', isCurrent ? 'true' : 'false');
 
         // Cria o conteúdo do botão com ícone + texto
         btn.innerHTML = '<span class="player-server-icon" aria-hidden="true">' + server.icon + '</span> ' +
-                        '<span>' + server.name + '</span>';
+          '<span>' + server.name + '</span>';
 
         btn.addEventListener('click', function () {
           switchServer(server.id);
@@ -3501,7 +3501,7 @@
       // 1. Caçar e destruir de forma estrita o iframe anterior usando element.remove()
       var oldIframe = $mount.querySelector('iframe');
       if (oldIframe) {
-        try { oldIframe.src = 'about:blank'; } catch (e) {}
+        try { oldIframe.src = 'about:blank'; } catch (e) { }
         oldIframe.remove();
       }
       state.iframe = null;
@@ -3699,29 +3699,29 @@
   // era `document.querySelector('.section__sub')`, que pegava o
   // PRIMEIRO match — agora a seção "Minha Lista" também tem um
   // `.section__sub` e estaria sendo sobrescrita.
-  var $sectionSub   = $sectionTitle.parentElement.querySelector('.section__sub');
-  var $loadMore     = document.getElementById('grid-loadmore');
-  var $sentinel     = document.getElementById('grid-sentinel');
-  var $chips        = document.getElementById('genres-chips');
+  var $sectionSub = $sectionTitle.parentElement.querySelector('.section__sub');
+  var $loadMore = document.getElementById('grid-loadmore');
+  var $sentinel = document.getElementById('grid-sentinel');
+  var $chips = document.getElementById('genres-chips');
 
   /* ----- Header dinâmico baseado no modo atual ------------------------- */
 
   function setHeader() {
     if (state.mode === 'search') {
       $sectionTitle.textContent = 'Resultados para "' + state.query + '"';
-      $sectionSub.textContent   = 'Filmes e séries encontrados na TMDB';
+      $sectionSub.textContent = 'Filmes e séries encontrados na TMDB';
     } else if (state.mode === 'genre') {
       $sectionTitle.textContent = 'Gênero: ' + state.genreName;
-      $sectionSub.textContent   = 'Filmes mais populares deste gênero';
+      $sectionSub.textContent = 'Filmes mais populares deste gênero';
     } else {
       $sectionTitle.textContent = 'Em alta nesta semana';
-      $sectionSub.textContent   = 'Filmes e séries mais populares no momento';
+      $sectionSub.textContent = 'Filmes e séries mais populares no momento';
     }
   }
 
   function getEmptyMessage() {
     if (state.mode === 'search') return 'Nenhum resultado para "' + state.query + '".';
-    if (state.mode === 'genre')  return 'Nenhum filme encontrado neste gênero.';
+    if (state.mode === 'genre') return 'Nenhum filme encontrado neste gênero.';
     return 'Nenhum título em alta no momento.';
   }
 
@@ -3772,7 +3772,7 @@
 
   function fetchForCurrentMode(page, signal) {
     if (state.mode === 'search') return searchMulti(state.query, page, signal);
-    if (state.mode === 'genre')  return getByGenre(state.genreId, page, signal);
+    if (state.mode === 'genre') return getByGenre(state.genreId, page, signal);
     return getTrending(page, signal);
   }
 
@@ -3928,7 +3928,7 @@
 
   var $searchInput = document.getElementById('search-input');
   var $searchClear = document.getElementById('search-clear');
-  var $searchForm  = document.getElementById('search-form');
+  var $searchForm = document.getElementById('search-form');
 
   if (!$searchInput || !$searchClear || !$searchForm) {
     console.error('[Streaming MVP] Elementos de busca não encontrados no DOM:',
@@ -4312,24 +4312,24 @@
    *    não retorna a senha em payload de erro, mas reforço aqui.
    */
   var Auth = (function () {
-    var $modal     = document.getElementById('auth-modal');
-    var $form      = document.getElementById('auth-form');
-    var $tabLogin  = document.getElementById('auth-tab-login');
+    var $modal = document.getElementById('auth-modal');
+    var $form = document.getElementById('auth-form');
+    var $tabLogin = document.getElementById('auth-tab-login');
     var $tabSignup = document.getElementById('auth-tab-signup');
-    var $title     = document.getElementById('auth-modal-title');
-    var $email     = document.getElementById('auth-email');
-    var $password  = document.getElementById('auth-password');
-    var $emailErr  = document.getElementById('auth-email-error');
-    var $passErr   = document.getElementById('auth-password-error');
-    var $banner    = document.getElementById('auth-banner');
-    var $submit    = document.getElementById('auth-submit');
+    var $title = document.getElementById('auth-modal-title');
+    var $email = document.getElementById('auth-email');
+    var $password = document.getElementById('auth-password');
+    var $emailErr = document.getElementById('auth-email-error');
+    var $passErr = document.getElementById('auth-password-error');
+    var $banner = document.getElementById('auth-banner');
+    var $submit = document.getElementById('auth-submit');
     var $submitLbl = document.getElementById('auth-submit-label');
 
-    var $headerWrap   = document.getElementById('auth-header');
-    var $loginBtn     = document.getElementById('auth-login-btn');
-    var $userWrap     = document.getElementById('auth-header-user');
-    var $userEmail    = document.getElementById('auth-header-email');
-    var $logoutBtn    = document.getElementById('auth-logout-btn');
+    var $headerWrap = document.getElementById('auth-header');
+    var $loginBtn = document.getElementById('auth-login-btn');
+    var $userWrap = document.getElementById('auth-header-user');
+    var $userEmail = document.getElementById('auth-header-email');
+    var $logoutBtn = document.getElementById('auth-logout-btn');
 
     /** Modo atual: 'login' ou 'signup'. */
     var mode = 'login';
@@ -4354,7 +4354,7 @@
 
     function validate() {
       var emailOk = isEmailValid($email.value);
-      var passOk  = isPasswordValid($password.value);
+      var passOk = isPasswordValid($password.value);
       $submit.disabled = !(emailOk && passOk) || submitting;
       return { emailOk: emailOk, passOk: passOk, ok: emailOk && passOk };
     }
@@ -4442,7 +4442,7 @@
       $submit.classList.toggle('auth-modal__submit--loading', !!loading);
       // Inputs também vão pra disabled durante a request — UX consistente
       // (não dá pra editar o email enquanto a senha tá sendo verificada).
-      $email.disabled    = !!loading;
+      $email.disabled = !!loading;
       $password.disabled = !!loading;
       // submit fica disabled por loading OU validação inválida — re-evalua
       validate();
@@ -4455,7 +4455,7 @@
       if (err.status === 429) return true;
       var msg = String(err.message || '').toLowerCase();
       return msg.indexOf('rate limit') >= 0 ||
-             msg.indexOf('too many requests') >= 0;
+        msg.indexOf('too many requests') >= 0;
     }
 
     function friendlyError(err) {
@@ -4465,11 +4465,11 @@
         return 'Muitas tentativas. Aguarde alguns segundos e tente de novo.';
       }
       if (msg.indexOf('invalid login') >= 0 ||
-          msg.indexOf('invalid credentials') >= 0) {
+        msg.indexOf('invalid credentials') >= 0) {
         return 'Email ou senha incorretos.';
       }
       if (msg.indexOf('user already registered') >= 0 ||
-          msg.indexOf('already been registered') >= 0) {
+        msg.indexOf('already been registered') >= 0) {
         return 'Esse email já tem conta. Tente fazer login.';
       }
       if (msg.indexOf('email not confirmed') >= 0) {
@@ -4528,7 +4528,7 @@
           // modal. Aqui só tratamos signup com email_confirmed=null,
           // que NÃO dispara SIGNED_IN automaticamente.
           if (mode === 'signup' && res.data && res.data.user &&
-              !res.data.session) {
+            !res.data.session) {
             // Confirmação por email habilitada no projeto → dá feedback
             // pro usuário verificar a caixa de entrada.
             setLoading(false);
@@ -4601,10 +4601,10 @@
     /* ---- Wire-up ------------------------------------------------------- */
 
     function bind() {
-      $tabLogin.addEventListener('click',  function () { setMode('login');  });
+      $tabLogin.addEventListener('click', function () { setMode('login'); });
       $tabSignup.addEventListener('click', function () { setMode('signup'); });
 
-      $email.addEventListener('input',    function () {
+      $email.addEventListener('input', function () {
         clearFieldError($email, $emailErr);
         validate();
       });
@@ -4621,7 +4621,7 @@
         if (t && t.matches && t.matches('[data-auth-close]')) close();
       });
 
-      $loginBtn.addEventListener('click',  open);
+      $loginBtn.addEventListener('click', open);
       $logoutBtn.addEventListener('click', signOut);
 
       validate();
