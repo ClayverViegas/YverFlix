@@ -3351,12 +3351,33 @@
       // Limpa qualquer conteúdo anterior (iframe quebrado, tela de erro, etc).
       $mount.innerHTML = '';
 
-      // --- Construção do iframe ---
+      // 1. Injeta o seletor de servidores
+      injetarSeletorDeServidores(item.tmdbId, item.mediaType, season, episode);
+
+      // 2. Injeta o título do conteúdo
+      var titleEl = document.createElement('div');
+      titleEl.className = 'player-title';
+
+      var label;
+      if (season != null && episode != null) {
+        label = season + 'x' + (episode < 10 ? '0' + episode : String(episode));
+        if (state.currentEpisodeTitle) {
+          label += ' \u2014 ' + state.currentEpisodeTitle;
+        } else {
+          label += ' \u2014 ' + item.title;
+        }
+      } else {
+        label = item.title;
+      }
+      titleEl.textContent = label;
+      $mount.appendChild(titleEl);
+
+      // 3. Construção do iframe
       var iframe = document.createElement('iframe');
 
       // Estilos inline: posicionamento relativo para fluxo normal
       iframe.style.width = '100%';
-      iframe.style.height = '100%';
+      iframe.style.flex = '1';
       iframe.style.border = 'none';
       iframe.style.position = 'relative';
       iframe.style.background = '#000';
@@ -3378,11 +3399,8 @@
 
       iframe.src = url;
 
-      // Injeta no DOM.
+      // Injeta no DOM após o título.
       $mount.appendChild(iframe);
-
-      // Injeta o seletor de servidores por cima
-      injetarSeletorDeServidores(item.tmdbId, item.mediaType, season, episode);
     }
 
     /*
@@ -3455,12 +3473,15 @@
       });
 
       // Estilização do selectorContainer
-      container.style.position = 'relative';
-      container.style.top = 'auto';
-      container.style.right = 'auto';
-      container.style.display = 'flex';
-      container.style.justifyContent = 'flex-end';
-      container.style.marginBottom = '8px';
+      Object.assign(container.style, {
+        position: 'relative',
+        display: 'flex',
+        justifyContent: 'flex-end',
+        gap: '10px',
+        zIndex: '9999',
+        background: 'rgba(10, 10, 10, 0.85)',
+        marginBottom: '8px'
+      });
 
       // Injeta como primeiro filho para ficar empilhado acima do iframe
       $mount.insertBefore(container, $mount.firstChild);
@@ -3488,7 +3509,7 @@
       // 2. Criar e injetar o novo iframe
       var iframe = document.createElement('iframe');
       iframe.style.width = '100%';
-      iframe.style.height = '100%';
+      iframe.style.flex = '1';
       iframe.style.border = 'none';
       iframe.style.position = 'relative';
       iframe.style.background = '#000';
@@ -3506,13 +3527,8 @@
       iframe.src = url;
       state.iframe = iframe;
 
-      // Injeta o novo iframe após o contêiner do seletor para respeitar o fluxo normal do DOM
-      var selectorContainer = $mount.querySelector('.player-servers');
-      if (selectorContainer) {
-        $mount.insertBefore(iframe, selectorContainer.nextSibling);
-      } else {
-        $mount.appendChild(iframe);
-      }
+      // Injeta o novo iframe no final do mount (mantendo a pilha flexbox correta)
+      $mount.appendChild(iframe);
 
       // Atualizar o destaque visual dos botões
       var buttons = $mount.querySelectorAll('.player-server-btn');
