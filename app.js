@@ -2967,12 +2967,6 @@
     var $mount          = document.getElementById('player-mount');
     var $closeBtns      = $modal.querySelectorAll('[data-modal-close]');
 
-    /**
-     * Timeout (ms) para carregamento do iframe. Se o BetterFlix não disparar
-     * 'load' dentro desse tempo, fallback silencioso para WarezCDN.
-     */
-    var IFRAME_LOAD_TIMEOUT_MS = 8000;
-
     var state = {
       isOpen: false,
       view: 'details',
@@ -2981,7 +2975,6 @@
       currentSeason: null,
       currentEpisode: null,
       currentEpisodeTitle: null,
-      loadTimerId: 0,
       cleanups: null,
       lastFocused: null,
     };
@@ -2994,22 +2987,12 @@
     function buildBetterFlixUrl(mediaType, tmdbId, season, episode) {
       var base = 'https://betterflix.click/api/player';
       var type = mediaType === 'movie' ? 'movie' : 'tv';
-      var url = base + '?id=' + encodeURIComponent(tmdbId) + '&type=' + type + '&source=server2';
+      var url = base + '?id=' + encodeURIComponent(tmdbId) + '&type=' + type;
       if (type === 'tv') {
         url += '&season=' + encodeURIComponent(season || 1) +
                '&episode=' + encodeURIComponent(episode || 1);
       }
       return url;
-    }
-
-    function buildWarezCDNUrl(mediaType, tmdbId, season, episode) {
-      var base = 'https://embed.warezcdn.com';
-      if (mediaType === 'movie') {
-        return base + '/filme/' + encodeURIComponent(tmdbId);
-      }
-      return base + '/serie/' + encodeURIComponent(tmdbId) +
-             '/' + encodeURIComponent(season || 1) +
-             '/' + encodeURIComponent(episode || 1);
     }
 
     var openGeneration = 0;
@@ -3370,55 +3353,16 @@
       // Atributos de permissão (autoplay, PIP, fullscreen, clipboard).
       iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write');
       iframe.setAttribute('allowfullscreen', 'true');
-      iframe.setAttribute('webkitallowfullscreen', '');
-      iframe.setAttribute('mozallowfullscreen', '');
-      iframe.title = 'Player de vídeo — ' + (item.title || 'mídia');
-      iframe.referrerPolicy = 'no-referrer';
 
       state.iframe = iframe;
 
       // --- BetterFlix como provedor padrão ---
-      var primaryUrl = buildWarezCDNUrl(item.mediaType, item.tmdbId, season, episode);
+      var primaryUrl = buildBetterFlixUrl(item.mediaType, item.tmdbId, season, episode);
       iframe.src = primaryUrl;
       console.log('[Player] Carregando BetterFlix:', primaryUrl);
 
-      // Flag de controle: onload zera o timer e impede o fallback.
-      var iframeLoaded = false;
-
-      // onload via propriedade: mais leve que addEventListener,
-      // e sobrescreve qualquer handler anterior (seguro contra re-injeção).
-      iframe.onload = function () {
-        iframeLoaded = true;
-        if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
-        console.log('[Player] Iframe carregado com sucesso.');
-      };
-
-      iframe.onerror = function () {
-        console.error('[Player] Iframe emitiu erro de rede.');
-        onIframeFail(new Error('iframe onerror'));
-      };
-
       // Injeta no DOM.
       $mount.appendChild(iframe);
-
-      // --- Sistema de fallback silencioso (8 segundos) ---
-      state.loadTimerId = setTimeout(function () {
-        // Guards: modal fechado, iframe destruído, ou já carregou.
-        if (iframeLoaded) return;
-        if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
-
-       // Fallback: troca o src para BetterFlix silenciosamente.
-var fallbackUrl = buildBetterFlixUrl(item.mediaType, item.tmdbId, season, episode);
-console.warn('[Player] WarezCDN timeout (' + IFRAME_LOAD_TIMEOUT_MS + 'ms) - fallback para BetterFlix:', fallbackUrl);
-iframe.src = fallbackUrl;
-
-        // Segundo timer: se WarezCDN também não carregar, erro definitivo.
-        state.loadTimerId = setTimeout(function () {
-          if (iframeLoaded) return;
-          if (!state.isOpen || !state.iframe || state.iframe !== iframe) return;
-          onIframeFail(new Error('WarezCDN também falhou (timeout)'));
-        }, IFRAME_LOAD_TIMEOUT_MS);
-      }, IFRAME_LOAD_TIMEOUT_MS);
     }
 
     /*
@@ -3428,8 +3372,6 @@ iframe.src = fallbackUrl;
     function destroyIframe() {
       saveCurrentProgress(true);
       stopProgressTracker();
-
-      if (state.loadTimerId) { clearTimeout(state.loadTimerId); state.loadTimerId = 0; }
 
       if (state.iframe) {
         // about:blank antes de remover: corta áudio/banda no Chromium.
