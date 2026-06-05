@@ -3372,7 +3372,6 @@
       iframe.onload = function () {
         iframe.classList.remove('loading');
       };
-
       // URL baseada no servidor ativo
       var url = trocarIframePlayer(state.activeServer, item.tmdbId, item.mediaType, season, episode);
       console.log('[Player] Carregando ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'BetterFlix') + ':', url);
@@ -3501,7 +3500,6 @@
       iframe.onload = function () {
         iframe.classList.remove('loading');
       };
-
       var url = trocarIframePlayer(state.activeServer, state.currentItem.tmdbId, state.currentItem.mediaType, state.currentSeason, state.currentEpisode);
       console.log('[Player] Chaveando para ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'BetterFlix') + ':', url);
 
