@@ -2985,24 +2985,25 @@
      * Cada um recebe (mediaType, tmdbId, season, episode) e devolve a URL
      * completa para o iframe.src.
      */
-    function buildBetterFlixUrl(mediaType, tmdbId, season, episode) {
-      var type = mediaType === 'movie' ? 'movie' : 'tv';
-      var s = type === 'tv' ? (season || 1) : '';
-      var e = type === 'tv' ? (episode || 1) : '';
-      return 'https://betterflix.click/api/player?id=' + encodeURIComponent(tmdbId) +
-             '&type=' + encodeURIComponent(type) +
-             '&season=' + encodeURIComponent(s) +
-             '&episode=' + encodeURIComponent(e) +
-             '&source=source3';
-    }
-
-    function buildWarezCDNUrl(mediaType, tmdbId, season, episode) {
-      var typeStr = mediaType === 'movie' ? 'filme' : 'serie';
-      var url = 'https://embed.warezcdn.com/' + typeStr + '/' + encodeURIComponent(tmdbId);
-      if (mediaType === 'tv') {
-        url += '/' + encodeURIComponent(season || 1) + '/' + encodeURIComponent(episode || 1);
+    function trocarIframePlayer(provedor, id, type, s, e) {
+      if (provedor === 'warezcdn') {
+        var typeStr = type === 'movie' ? 'filme' : 'serie';
+        var url = 'https://warezcdn.lat/' + typeStr + '/' + encodeURIComponent(id);
+        if (type === 'tv') {
+          url += '/' + encodeURIComponent(s || 1) + '/' + encodeURIComponent(e || 1);
+        }
+        return url;
+      } else {
+        // Fallback/Default: betterflix
+        var typeVal = type === 'movie' ? 'movie' : 'tv';
+        var seasonVal = typeVal === 'tv' ? (s || 1) : '';
+        var episodeVal = typeVal === 'tv' ? (e || 1) : '';
+        return 'https://betterflix.click/api/player?id=' + encodeURIComponent(id) +
+               '&type=' + encodeURIComponent(typeVal) +
+               '&season=' + encodeURIComponent(seasonVal) +
+               '&episode=' + encodeURIComponent(episodeVal) +
+               '&source=source3';
       }
-      return url;
     }
 
     var openGeneration = 0;
@@ -3368,14 +3369,8 @@
       state.iframe = iframe;
 
       // URL baseada no servidor ativo
-      var url;
-      if (state.activeServer === 'warezcdn') {
-        url = buildWarezCDNUrl(item.mediaType, item.tmdbId, season, episode);
-        console.log('[Player] Carregando WarezCDN:', url);
-      } else {
-        url = buildBetterFlixUrl(item.mediaType, item.tmdbId, season, episode);
-        console.log('[Player] Carregando BetterFlix:', url);
-      }
+      var url = trocarIframePlayer(state.activeServer, item.tmdbId, item.mediaType, season, episode);
+      console.log('[Player] Carregando ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'BetterFlix') + ':', url);
 
       iframe.src = url;
 
@@ -3488,14 +3483,8 @@
       iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write');
       iframe.setAttribute('allowfullscreen', 'true');
 
-      var url;
-      if (state.activeServer === 'warezcdn') {
-        url = buildWarezCDNUrl(state.currentItem.mediaType, state.currentItem.tmdbId, state.currentSeason, state.currentEpisode);
-        console.log('[Player] Chaveando para WarezCDN:', url);
-      } else {
-        url = buildBetterFlixUrl(state.currentItem.mediaType, state.currentItem.tmdbId, state.currentSeason, state.currentEpisode);
-        console.log('[Player] Chaveando para BetterFlix:', url);
-      }
+      var url = trocarIframePlayer(state.activeServer, state.currentItem.tmdbId, state.currentItem.mediaType, state.currentSeason, state.currentEpisode);
+      console.log('[Player] Chaveando para ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'BetterFlix') + ':', url);
 
       iframe.src = url;
       state.iframe = iframe;
@@ -3615,9 +3604,10 @@
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       if (state.currentItem) {
-        link.href = buildBetterFlixUrl(
-          state.currentItem.mediaType,
+        link.href = trocarIframePlayer(
+          state.activeServer,
           state.currentItem.tmdbId,
+          state.currentItem.mediaType,
           state.currentSeason,
           state.currentEpisode
         );
