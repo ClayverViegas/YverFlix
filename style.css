@@ -2005,3 +2005,67 @@ body {
     color: #7eb8ff;
     font-weight: 600;
 }
+
+/* ============================================================
+   MÓDULO DE ORQUESTRAÇÃO DE PLAYERS (CAMADA 3)
+   Seletor de Servidores Flutuante (Preto e Roxo Brilhante)
+   ============================================================ */
+.player-servers {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 100;
+  pointer-events: auto;
+}
+
+.player-server-btn {
+  background: rgba(10, 10, 15, 0.85);
+  color: #c084fc; /* Roxo claro */
+  border: 1px solid rgba(147, 51, 234, 0.4); /* Roxo translúcido */
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Efeito Hover/Focus (3D sutil) */
+.player-server-btn:hover,
+.player-server-btn:focus-visible {
+  transform: translateY(-2px);
+  background: rgba(15, 12, 25, 0.95);
+  border-color: rgba(168, 85, 247, 0.7);
+  color: #f3e8ff;
+  box-shadow: 0 6px 14px rgba(147, 51, 234, 0.25), 
+              0 0 10px rgba(168, 85, 247, 0.2),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.player-server-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Destaque Ativo (Gradiente + Glow Roxo) */
+.player-server-btn--active {
+  background: linear-gradient(135deg, #1e1b4b 0%, #581c87 100%);
+  color: #ffffff;
+  border-color: #a855f7;
+  font-weight: 700;
+  box-shadow: 0 0 15px rgba(168, 85, 247, 0.6), 
+              inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  text-shadow: 0 0 8px rgba(243, 232, 255, 0.8);
+}
+
+.player-server-icon {
+  font-size: 0.9rem;
+}

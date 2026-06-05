@@ -447,6 +447,10 @@
     estrutura simples de 3 arquivos solicitada — funciona via file://
     em alguns browsers e em qualquer servidor estático.
   -->
+  <!-- BOTOES DE TESTE TEMPORARIOS (Serão removidos após a validação) -->
+  <button id="test-movie-btn" style="position:fixed; bottom:10px; left:10px; z-index:99999; background:#581c87; border: 1px solid #a855f7; color:white; padding:8px 12px; border-radius:6px; cursor:pointer;" onclick="window.YverFlix.ContentModal.open({ tmdbId: 550, mediaType: 'movie', title: 'Clube da Luta' }, { autoplay: true })">Testar Filme</button>
+  <button id="test-tv-btn" style="position:fixed; bottom:10px; left:130px; z-index:99999; background:#581c87; border: 1px solid #a855f7; color:white; padding:8px 12px; border-radius:6px; cursor:pointer;" onclick="window.YverFlix.ContentModal.open({ tmdbId: 1396, mediaType: 'tv', title: 'Breaking Bad' }, { autoplay: true, resumeSeason: 1, resumeEpisode: 3 })">Testar Série</button>
+
   <script src="./app.js" defer></script>
 </body>
 </html>
