@@ -652,10 +652,27 @@ body {
 }
 
 /* ---- Mobile ---------------------------------------------------------- */
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   /* topbar quebra em duas linhas: brand em cima, busca embaixo full-width */
-  .topbar__inner { flex-wrap: wrap; }
-  .search { flex-basis: 100%; max-width: none; margin: 0; }
+  .topbar__inner {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    padding: 10px 16px;
+  }
+  .brand {
+    order: 1;
+  }
+  .auth-header {
+    order: 2;
+    margin-left: auto;
+  }
+  .search {
+    order: 3;
+    width: 100%;
+    flex-basis: 100%;
+    max-width: none;
+    margin: 8px 0 0 0;
+  }
 
   /* Em mobile, chips viram scroll horizontal (sem wrap). */
   .filters__inner { padding: 10px 14px; }
@@ -1681,6 +1698,7 @@ body {
 
 .auth-header__user {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 10px;
 }
@@ -1727,16 +1745,8 @@ body {
   white-space: nowrap;
 }
 
-@media (max-width: 720px) {
-  .auth-header__email { display: none; }  /* só botão Sair em mobile */
-  .auth-header__btn-download-text { display: none; }
-  .auth-header__btn-download {
-    padding: 8px;
-    border-radius: 50%;
-    width: 32px;
-    height: 32px;
-    justify-content: center;
-  }
+@media (max-width: 768px) {
+  .auth-header__email { display: none; }  /* só os botões no topo direito */
 }
 
 /* ---- Modal de auth --------------------------------------------------- */
