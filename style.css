@@ -1685,6 +1685,39 @@ body {
   gap: 10px;
 }
 
+.auth-header__btn-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: #c084fc; /* Roxo claro */
+  border: 1px solid rgba(147, 51, 234, 0.5); /* Borda roxa brilhosa sutil */
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: inherit;
+  box-shadow: 0 0 8px rgba(147, 51, 234, 0.1);
+}
+.auth-header__btn-download i {
+  font-size: 0.9rem;
+}
+.auth-header__btn-download:hover,
+.auth-header__btn-download:focus-visible {
+  background: rgba(15, 12, 25, 0.95);
+  color: #f3e8ff;
+  border-color: rgba(168, 85, 247, 0.8);
+  box-shadow: 0 0 15px rgba(168, 85, 247, 0.45), 0 0 5px rgba(168, 85, 247, 0.2);
+  transform: translateY(-1px);
+  outline: none;
+}
+.auth-header__btn-download:active {
+  transform: translateY(0);
+}
+
 .auth-header__email {
   color: var(--fg-dim);
   font-size: .85rem;
@@ -1696,6 +1729,14 @@ body {
 
 @media (max-width: 720px) {
   .auth-header__email { display: none; }  /* só botão Sair em mobile */
+  .auth-header__btn-download-text { display: none; }
+  .auth-header__btn-download {
+    padding: 8px;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    justify-content: center;
+  }
 }
 
 /* ---- Modal de auth --------------------------------------------------- */

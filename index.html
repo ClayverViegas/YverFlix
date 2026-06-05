@@ -20,6 +20,9 @@
   -->
   <link rel="preconnect" href="https://oxgibqccznmysncubkct.supabase.co" crossorigin />
 
+  <!-- Font Awesome para Ícones -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -82,6 +85,10 @@
         </button>
 
         <div class="auth-header__user" id="auth-header-user" hidden>
+          <a href="download.html" class="auth-header__btn-download" id="auth-download-btn" aria-label="Baixar aplicativo YverFlix">
+            <i class="fa-brands fa-android" aria-hidden="true"></i>
+            <span class="auth-header__btn-download-text">Baixar App</span>
+          </a>
           <span class="auth-header__email" id="auth-header-email"></span>
           <button type="button"
                   class="auth-header__btn auth-header__btn--logout"
