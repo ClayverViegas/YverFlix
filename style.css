@@ -1708,8 +1708,8 @@ body {
   align-items: center;
   gap: 6px;
   background: transparent;
-  color: #c084fc; /* Roxo claro */
-  border: 1px solid rgba(147, 51, 234, 0.5); /* Borda roxa brilhosa sutil */
+  color: #ff8a8f; /* Vermelho claro */
+  border: 1px solid rgba(229, 9, 20, 0.5); /* Borda vermelha brilhosa sutil */
   border-radius: 999px;
   padding: 6px 14px;
   font-size: 0.82rem;
@@ -1718,7 +1718,7 @@ body {
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: inherit;
-  box-shadow: 0 0 8px rgba(147, 51, 234, 0.1);
+  box-shadow: 0 0 8px rgba(229, 9, 20, 0.1);
 }
 .auth-header__btn-download i {
   font-size: 0.9rem;
@@ -1726,9 +1726,9 @@ body {
 .auth-header__btn-download:hover,
 .auth-header__btn-download:focus-visible {
   background: rgba(15, 12, 25, 0.95);
-  color: #f3e8ff;
-  border-color: rgba(168, 85, 247, 0.8);
-  box-shadow: 0 0 15px rgba(168, 85, 247, 0.45), 0 0 5px rgba(168, 85, 247, 0.2);
+  color: #ffeef0;
+  border-color: rgba(255, 59, 70, 0.8);
+  box-shadow: 0 0 15px rgba(255, 59, 70, 0.45), 0 0 5px rgba(255, 59, 70, 0.2);
   transform: translateY(-1px);
   outline: none;
 }
@@ -2104,10 +2104,10 @@ body {
 .player-server-btn:focus-visible {
   transform: translateY(-2px);
   background: rgba(15, 12, 25, 0.95);
-  border-color: rgba(168, 85, 247, 0.7);
-  color: #f3e8ff;
-  box-shadow: 0 6px 14px rgba(147, 51, 234, 0.25), 
-              0 0 10px rgba(168, 85, 247, 0.2),
+  border-color: rgba(229, 9, 20, 0.7);
+  color: #ffeef0;
+  box-shadow: 0 6px 14px rgba(229, 9, 20, 0.25), 
+              0 0 10px rgba(229, 9, 20, 0.2),
               inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
@@ -2116,15 +2116,15 @@ body {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* Destaque Ativo (Gradiente + Glow Roxo) */
+/* Destaque Ativo (Gradiente + Glow Vermelho) */
 .player-server-btn--active {
-  background: linear-gradient(135deg, #1e1b4b 0%, #581c87 100%);
+  background: linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%);
   color: #ffffff;
-  border-color: #a855f7;
+  border-color: #e50914;
   font-weight: 700;
-  box-shadow: 0 0 15px rgba(168, 85, 247, 0.6), 
+  box-shadow: 0 0 15px rgba(229, 9, 20, 0.6), 
               inset 0 1px 1px rgba(255, 255, 255, 0.2);
-  text-shadow: 0 0 8px rgba(243, 232, 255, 0.8);
+  text-shadow: 0 0 8px rgba(255, 238, 240, 0.8);
 }
 
 .player-server-icon {
@@ -2139,9 +2139,9 @@ body {
 .dl-page {
   background: #0a0a0a !important;
   background-image: 
-    radial-gradient(1000px 500px at 50% -10%, rgba(138, 43, 226, 0.15), transparent 70%), 
-    radial-gradient(800px 400px at 0% 80%, rgba(75, 0, 130, 0.1), transparent 60%), 
-    radial-gradient(800px 400px at 100% 40%, rgba(138, 43, 226, 0.08), transparent 60%) !important;
+    radial-gradient(1000px 500px at 50% -10%, rgba(229, 9, 20, 0.15), transparent 70%), 
+    radial-gradient(800px 400px at 0% 80%, rgba(139, 0, 0, 0.1), transparent 60%), 
+    radial-gradient(800px 400px at 100% 40%, rgba(229, 9, 20, 0.08), transparent 60%) !important;
   color: #eef1f4 !important;
   font-family: 'Outfit', system-ui, -apple-system, sans-serif !important;
   min-height: 100vh;
@@ -2153,7 +2153,7 @@ body {
 
 /* ---- Header ---- */
 .dl-header {
-  border-bottom: 1px solid rgba(138, 43, 226, 0.2);
+  border-bottom: 1px solid rgba(229, 9, 20, 0.2);
   background: rgba(10, 10, 10, 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -2198,16 +2198,16 @@ body {
 .dl-hero__badge {
   display: inline-block;
   padding: 6px 14px;
-  background: rgba(138, 43, 226, 0.15);
-  border: 1px solid rgba(168, 85, 247, 0.4);
-  color: #c084fc;
+  background: rgba(229, 9, 20, 0.15);
+  border: 1px solid rgba(255, 59, 70, 0.4);
+  color: #ff8a8f;
   border-radius: 99px;
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 16px;
-  box-shadow: 0 0 15px rgba(138, 43, 226, 0.15);
+  box-shadow: 0 0 15px rgba(229, 9, 20, 0.15);
 }
 .dl-hero__title {
   margin: 0 0 16px;
@@ -2218,10 +2218,10 @@ body {
   letter-spacing: -0.5px;
 }
 .dl-hero__title span {
-  background: linear-gradient(135deg, #a855f7 0%, #8a2be2 100%);
+  background: linear-gradient(135deg, #ff3b46 0%, #e50914 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 20px rgba(138, 43, 226, 0.2);
+  text-shadow: 0 0 20px rgba(229, 9, 20, 0.2);
 }
 .dl-hero__subtitle {
   margin: 0 auto 32px;
@@ -2240,15 +2240,15 @@ body {
   align-items: center;
   gap: 12px;
   padding: 18px 40px;
-  background: linear-gradient(135deg, #8A2BE2 0%, #4B0082 100%);
+  background: linear-gradient(135deg, #2b0003 0%, #0c0001 100%);
   color: #ffffff !important;
   text-decoration: none;
   font-size: 1.15rem;
   font-weight: 700;
   border-radius: 99px;
-  border: 1px solid rgba(168, 85, 247, 0.6);
+  border: 1px solid rgba(229, 9, 20, 0.7);
   box-shadow: 
-    0 0 25px rgba(138, 43, 226, 0.45), 
+    0 0 25px rgba(229, 9, 20, 0.45), 
     0 8px 30px rgba(0, 0, 0, 0.5), 
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2272,10 +2272,10 @@ body {
 .dl-btn:hover {
   transform: translateY(-4px);
   box-shadow: 
-    0 0 35px rgba(138, 43, 226, 0.75), 
+    0 0 35px rgba(229, 9, 20, 0.75), 
     0 12px 40px rgba(0, 0, 0, 0.6), 
     inset 0 1px 0 rgba(255, 255, 255, 0.4);
-  border-color: rgba(168, 85, 247, 0.9);
+  border-color: rgba(255, 59, 70, 0.9);
 }
 .dl-btn:hover::before {
   left: 100%;
@@ -2283,7 +2283,7 @@ body {
 .dl-btn:active {
   transform: translateY(1px);
   box-shadow: 
-    0 0 15px rgba(138, 43, 226, 0.4), 
+    0 0 15px rgba(229, 9, 20, 0.4), 
     0 4px 10px rgba(0, 0, 0, 0.4);
 }
 .dl-btn__icon {
@@ -2322,7 +2322,7 @@ body {
 .dl-meta__divider {
   width: 1px;
   height: 24px;
-  background: rgba(138, 43, 226, 0.2);
+  background: rgba(229, 9, 20, 0.2);
 }
 
 /* ---- Segurança (Transparência) ---- */
@@ -2332,14 +2332,14 @@ body {
 }
 .dl-security__box {
   background: rgba(15, 15, 20, 0.6);
-  border: 1px solid rgba(138, 43, 226, 0.25);
+  border: 1px solid rgba(229, 9, 20, 0.25);
   border-radius: 20px;
   padding: 32px;
   display: flex;
   gap: 24px;
   box-shadow: 
     0 20px 50px rgba(0, 0, 0, 0.6), 
-    inset 0 1px 1px rgba(138, 43, 226, 0.1);
+    inset 0 1px 1px rgba(229, 9, 20, 0.1);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -2348,12 +2348,12 @@ body {
   width: 56px;
   height: 56px;
   border-radius: 12px;
-  background: rgba(138, 43, 226, 0.1);
-  border: 1px solid rgba(138, 43, 226, 0.3);
+  background: rgba(229, 9, 20, 0.1);
+  border: 1px solid rgba(229, 9, 20, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 15px rgba(138, 43, 226, 0.1);
+  box-shadow: 0 0 15px rgba(229, 9, 20, 0.1);
 }
 .dl-security__content {
   flex-grow: 1;
@@ -2386,15 +2386,15 @@ body {
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
-  background: rgba(138, 43, 226, 0.08);
-  border: 1px solid rgba(138, 43, 226, 0.2);
-  color: #c084fc;
+  background: rgba(229, 9, 20, 0.08);
+  border: 1px solid rgba(229, 9, 20, 0.2);
+  color: #ff8a8f;
   border-radius: 99px;
   font-size: 0.8rem;
   font-weight: 600;
 }
 .dl-badge svg {
-  color: #a855f7;
+  color: #ff3b46;
 }
 
 /* ---- Passo a Passo ---- */
@@ -2418,7 +2418,7 @@ body {
 .dl-card {
   position: relative;
   background: rgba(15, 15, 20, 0.5);
-  border: 1px solid rgba(138, 43, 226, 0.15);
+  border: 1px solid rgba(229, 9, 20, 0.15);
   border-radius: 18px;
   padding: 30px 24px;
   display: flex;
@@ -2430,10 +2430,10 @@ body {
 }
 .dl-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(138, 43, 226, 0.3);
+  border-color: rgba(229, 9, 20, 0.3);
   box-shadow: 
     0 20px 45px rgba(0, 0, 0, 0.5), 
-    0 0 15px rgba(138, 43, 226, 0.05);
+    0 0 15px rgba(229, 9, 20, 0.05);
 }
 .dl-card__header {
   display: flex;
@@ -2443,7 +2443,7 @@ body {
 .dl-card__num {
   font-size: 2.2rem;
   font-weight: 800;
-  background: linear-gradient(135deg, #a855f7 0%, #4b0082 100%);
+  background: linear-gradient(135deg, #ff3b46 0%, #8b0000 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   line-height: 1;
@@ -2475,18 +2475,18 @@ body {
 
 /* Destaque para o Passo 3 (Play Protect) */
 .dl-card--highlighted {
-  border: 1px solid rgba(168, 85, 247, 0.7);
-  background: linear-gradient(180deg, rgba(75, 0, 130, 0.15) 0%, rgba(10, 10, 10, 0.8) 100%);
+  border: 1px solid rgba(255, 59, 70, 0.7);
+  background: linear-gradient(180deg, rgba(139, 0, 0, 0.15) 0%, rgba(10, 10, 10, 0.8) 100%);
   box-shadow: 
-    0 15px 35px rgba(138, 43, 226, 0.2), 
-    0 0 20px rgba(168, 85, 247, 0.15);
+    0 15px 35px rgba(229, 9, 20, 0.2), 
+    0 0 20px rgba(255, 59, 70, 0.15);
   animation: dl-pulse-border 3s ease-in-out infinite;
 }
 .dl-card--highlighted .dl-card__glow {
   position: absolute;
   top: -150px; left: -150px;
   width: 300px; height: 300px;
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(229, 9, 20, 0.12) 0%, transparent 70%);
   pointer-events: none;
 }
 .dl-card--highlighted .dl-card__icon--alert {
@@ -2497,20 +2497,20 @@ body {
   animation: dl-pulse-alert 1.5s ease-in-out infinite;
 }
 .dl-card--highlighted .dl-card__num {
-  background: linear-gradient(135deg, #f43f5e 0%, #a855f7 100%);
+  background: linear-gradient(135deg, #f43f5e 0%, #ff3b46 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 .dl-card--highlighted:hover {
-  border-color: rgba(168, 85, 247, 0.9);
+  border-color: rgba(255, 59, 70, 0.9);
   box-shadow: 
-    0 20px 45px rgba(138, 43, 226, 0.3), 
-    0 0 30px rgba(168, 85, 247, 0.25);
+    0 20px 45px rgba(229, 9, 20, 0.3), 
+    0 0 30px rgba(255, 59, 70, 0.25);
 }
 
 /* Destaques de texto */
 .dl-highlight-purple {
-  color: #c084fc;
+  color: #ff8a8f;
 }
 .dl-highlight-red {
   color: #ef4444;
@@ -2523,7 +2523,7 @@ body {
 .dl-footer {
   text-align: center;
   padding: 40px 24px;
-  border-top: 1px solid rgba(138, 43, 226, 0.15);
+  border-top: 1px solid rgba(229, 9, 20, 0.15);
   color: #5f6b78;
   font-size: 0.85rem;
   margin-top: 60px;
@@ -2532,12 +2532,12 @@ body {
 /* ---- Keyframe Animations ---- */
 @keyframes dl-pulse-border {
   0%, 100% {
-    border-color: rgba(168, 85, 247, 0.6);
-    box-shadow: 0 15px 35px rgba(138, 43, 226, 0.18), 0 0 15px rgba(168, 85, 247, 0.1);
+    border-color: rgba(255, 59, 70, 0.6);
+    box-shadow: 0 15px 35px rgba(229, 9, 20, 0.18), 0 0 15px rgba(255, 59, 70, 0.1);
   }
   50% {
-    border-color: rgba(168, 85, 247, 1);
-    box-shadow: 0 15px 35px rgba(138, 43, 226, 0.35), 0 0 25px rgba(168, 85, 247, 0.3);
+    border-color: rgba(255, 59, 70, 1);
+    box-shadow: 0 15px 35px rgba(229, 9, 20, 0.35), 0 0 25px rgba(255, 59, 70, 0.3);
   }
 }
 
@@ -2550,6 +2550,47 @@ body {
     transform: scale(1.08);
     box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
   }
+}
+
+/* ---- Botão de Download do APK no Modal de Autenticação ---- */
+.auth-modal__app-download {
+  margin-top: 24px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.auth-modal__app-text {
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+  margin: 0 0 10px 0;
+}
+.auth-modal__btn-apk {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 20px;
+  background: transparent;
+  color: #ff3b46;
+  border: 1px solid rgba(229, 9, 20, 0.6);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 10px rgba(229, 9, 20, 0.1);
+}
+.auth-modal__btn-apk:hover,
+.auth-modal__btn-apk:focus-visible {
+  background: rgba(229, 9, 20, 0.08);
+  color: #fff;
+  border-color: #ff3b46;
+  box-shadow: 0 0 15px rgba(229, 9, 20, 0.3);
+  transform: translateY(-1px);
+}
+.auth-modal__btn-apk:active {
+  transform: translateY(0);
 }
 
 /* ---- Media Queries (Mobile Responsivo) ---- */

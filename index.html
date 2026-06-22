@@ -77,6 +77,11 @@
         localStorage chega via INITIAL_SESSION).
       -->
       <div class="auth-header" id="auth-header" hidden>
+        <a href="https://github.com/ClayverViegas/YverFlix/releases/download/versao1/YverFlix.apk" target="_blank" rel="noopener noreferrer" class="auth-header__btn-download" id="auth-download-btn" aria-label="Baixar aplicativo YverFlix">
+          <i class="fa-brands fa-android" aria-hidden="true"></i>
+          <span class="auth-header__btn-download-text">Download App</span>
+        </a>
+
         <button type="button"
                 class="auth-header__btn auth-header__btn--login"
                 id="auth-login-btn"
@@ -85,10 +90,6 @@
         </button>
 
         <div class="auth-header__user" id="auth-header-user" hidden>
-          <a href="download" class="auth-header__btn-download" id="auth-download-btn" aria-label="Baixar aplicativo YverFlix">
-            <i class="fa-brands fa-android" aria-hidden="true"></i>
-            <span class="auth-header__btn-download-text">Download App</span>
-          </a>
           <span class="auth-header__email" id="auth-header-email"></span>
           <button type="button"
                   class="auth-header__btn auth-header__btn--logout"
@@ -435,6 +436,13 @@
           <span class="auth-modal__submit-label" id="auth-submit-label">Entrar</span>
           <span class="auth-modal__submit-spinner" aria-hidden="true"></span>
         </button>
+
+        <div class="auth-modal__app-download">
+          <p class="auth-modal__app-text">Prefere usar no celular?</p>
+          <a href="https://github.com/ClayverViegas/YverFlix/releases/download/versao1/YverFlix.apk" target="_blank" rel="noopener noreferrer" class="auth-modal__btn-apk" id="auth-modal-apk-btn">
+            <i class="fa-brands fa-android" aria-hidden="true"></i> Baixar Aplicativo Oficial (APK)
+          </a>
+        </div>
       </form>
     </div>
   </div>
