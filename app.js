@@ -2992,9 +2992,9 @@
 
       if (provedor === 'vidsrc') {
         if (type === 'movie') {
-          return 'https://vidsrc.xyz/embed/movie/' + encodeURIComponent(tmdbId);
+          return 'https://vsembed.ru/embed/movie?tmdb=' + encodeURIComponent(tmdbId);
         } else {
-          return 'https://vidsrc.xyz/embed/tv/' + encodeURIComponent(tmdbId) + '/' + encodeURIComponent(season) + '/' + encodeURIComponent(episode);
+          return 'https://vsembed.ru/embed/tv?tmdb=' + encodeURIComponent(tmdbId) + '&season=' + encodeURIComponent(season) + '&episode=' + encodeURIComponent(episode);
         }
       } else {
         // Principal/Padrão: warezcdn (.lat com hashes #color=E50914#nolink)
@@ -3392,11 +3392,12 @@
         iframe.classList.remove('loading');
       };
       // URL baseada no servidor ativo
-      var url = trocarIframePlayer(state.activeServer, item.tmdbId, item.mediaType, season, episode);
-      console.log('[Player] Geração de URL - tmdbId:', item.tmdbId, 'season:', season, 'episode:', episode, '-> URL:', url);
-      console.log('[Player] Carregando ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', url);
+      var urlGerada = trocarIframePlayer(state.activeServer, item.tmdbId, item.mediaType, season, episode);
+      console.log('[YverFlix Player] URL gerada:', urlGerada);
+      console.log('[Player] Geração de URL - tmdbId:', item.tmdbId, 'season:', season, 'episode:', episode, '-> URL:', urlGerada);
+      console.log('[Player] Carregando ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', urlGerada);
 
-      iframe.src = url;
+      iframe.src = urlGerada;
 
       // Injeta no DOM após o título.
       $mount.appendChild(iframe);
@@ -3531,11 +3532,12 @@
       iframe.onload = function () {
         iframe.classList.remove('loading');
       };
-      var url = trocarIframePlayer(state.activeServer, state.currentItem.tmdbId, state.currentItem.mediaType, state.currentSeason, state.currentEpisode);
-      console.log('[Player] Geração de URL (switch) - tmdbId:', state.currentItem.tmdbId, 'season:', state.currentSeason, 'episode:', state.currentEpisode, '-> URL:', url);
-      console.log('[Player] Chaveando para ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', url);
+      var urlGerada = trocarIframePlayer(state.activeServer, state.currentItem.tmdbId, state.currentItem.mediaType, state.currentSeason, state.currentEpisode);
+      console.log('[YverFlix Player] URL gerada:', urlGerada);
+      console.log('[Player] Geração de URL (switch) - tmdbId:', state.currentItem.tmdbId, 'season:', state.currentSeason, 'episode:', state.currentEpisode, '-> URL:', urlGerada);
+      console.log('[Player] Chaveando para ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', urlGerada);
 
-      iframe.src = url;
+      iframe.src = urlGerada;
       state.iframe = iframe;
 
       // Injeta o novo iframe no final do mount (mantendo a pilha flexbox correta)
