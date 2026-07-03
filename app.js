@@ -2986,21 +2986,23 @@
      * completa para o iframe.src.
      */
     function trocarIframePlayer(provedor, id, type, s, e) {
+      var tmdbId = id;
+      var season = s || 1;
+      var episode = e || 1;
+
       if (provedor === 'vidsrc') {
-        var typeStr = type === 'movie' ? 'movie' : 'tv';
-        var url = 'https://vidsrc.to/embed/' + typeStr + '/' + encodeURIComponent(id);
-        if (type === 'tv') {
-          url += '/' + encodeURIComponent(s || 1) + '/' + encodeURIComponent(e || 1);
+        if (type === 'movie') {
+          return 'https://vidsrc.xyz/embed/movie/' + encodeURIComponent(tmdbId);
+        } else {
+          return 'https://vidsrc.xyz/embed/tv/' + encodeURIComponent(tmdbId) + '/' + encodeURIComponent(season) + '/' + encodeURIComponent(episode);
         }
-        return url;
       } else {
-        // Principal/Padrão: warezcdn
-        var typeStr = type === 'movie' ? 'filme' : 'serie';
-        var url = 'https://embed.warezcdn.link/' + typeStr + '/' + encodeURIComponent(id);
-        if (type === 'tv') {
-          url += '/' + encodeURIComponent(s || 1) + '/' + encodeURIComponent(e || 1);
+        // Principal/Padrão: warezcdn (.lat com hashes #color=E50914#nolink)
+        if (type === 'movie') {
+          return 'https://warezcdn.lat/filme/' + encodeURIComponent(tmdbId) + '#color=E50914#nolink';
+        } else {
+          return 'https://warezcdn.lat/serie/' + encodeURIComponent(tmdbId) + '/' + encodeURIComponent(season) + '/' + encodeURIComponent(episode) + '#color=E50914#nolink';
         }
-        return url;
       }
     }
 
@@ -3368,6 +3370,12 @@
 
       // 3. Construção do iframe
       var iframe = document.createElement('iframe');
+      iframe.setAttribute('frameborder', '0');
+      iframe.setAttribute('width', '100%');
+      iframe.setAttribute('height', '100%');
+      iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
+      iframe.setAttribute('allowfullscreen', 'true');
+      iframe.removeAttribute('sandbox'); // Garante que não possui sandbox
 
       // Estilos inline: posicionamento relativo para fluxo normal
       iframe.style.width = '100%';
@@ -3375,10 +3383,6 @@
       iframe.style.border = 'none';
       iframe.style.position = 'relative';
       iframe.style.background = '#000';
-
-      // Atributos de permissão (autoplay, PIP, fullscreen, clipboard).
-      iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write');
-      iframe.setAttribute('allowfullscreen', 'true');
 
       state.iframe = iframe;
 
@@ -3389,6 +3393,7 @@
       };
       // URL baseada no servidor ativo
       var url = trocarIframePlayer(state.activeServer, item.tmdbId, item.mediaType, season, episode);
+      console.log('[Player] Geração de URL - tmdbId:', item.tmdbId, 'season:', season, 'episode:', episode, '-> URL:', url);
       console.log('[Player] Carregando ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', url);
 
       iframe.src = url;
@@ -3508,13 +3513,18 @@
 
       // 2. Criar e injetar o novo iframe
       var iframe = document.createElement('iframe');
+      iframe.setAttribute('frameborder', '0');
+      iframe.setAttribute('width', '100%');
+      iframe.setAttribute('height', '100%');
+      iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
+      iframe.setAttribute('allowfullscreen', 'true');
+      iframe.removeAttribute('sandbox'); // Garante que não possui sandbox
+
       iframe.style.width = '100%';
       iframe.style.flex = '1';
       iframe.style.border = 'none';
       iframe.style.position = 'relative';
       iframe.style.background = '#000';
-      iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write');
-      iframe.setAttribute('allowfullscreen', 'true');
 
       // Adiciona classe de loading e listener onload
       iframe.classList.add('loading');
@@ -3522,6 +3532,7 @@
         iframe.classList.remove('loading');
       };
       var url = trocarIframePlayer(state.activeServer, state.currentItem.tmdbId, state.currentItem.mediaType, state.currentSeason, state.currentEpisode);
+      console.log('[Player] Geração de URL (switch) - tmdbId:', state.currentItem.tmdbId, 'season:', state.currentSeason, 'episode:', state.currentEpisode, '-> URL:', url);
       console.log('[Player] Chaveando para ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', url);
 
       iframe.src = url;
