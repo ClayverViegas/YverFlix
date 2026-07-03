@@ -4744,3 +4744,11 @@
   window.YverFlix.Auth = Auth;
   window.YverFlix.getCurrentUserId = getCurrentUserId;
 })();
+
+window.addEventListener('load', () => {
+    // Verifica se a ponte existe e gira a tela para landscape
+    if (window.AndroidBridge && typeof window.AndroidBridge.rotateToLandscape === 'function') {
+        window.AndroidBridge.rotateToLandscape();
+    }
+});
+
