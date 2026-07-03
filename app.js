@@ -2977,7 +2977,7 @@
       currentEpisodeTitle: null,
       cleanups: null,
       lastFocused: null,
-      activeServer: 'betterflix', // Default server
+      activeServer: 'warezcdn', // Default server (Principal/Padrão)
     };
 
     /**
@@ -2986,23 +2986,21 @@
      * completa para o iframe.src.
      */
     function trocarIframePlayer(provedor, id, type, s, e) {
-      if (provedor === 'warezcdn') {
-        var typeStr = type === 'movie' ? 'filme' : 'serie';
-        var url = 'https://warezcdn.lat/' + typeStr + '/' + encodeURIComponent(id);
+      if (provedor === 'vidsrc') {
+        var typeStr = type === 'movie' ? 'movie' : 'tv';
+        var url = 'https://vidsrc.to/embed/' + typeStr + '/' + encodeURIComponent(id);
         if (type === 'tv') {
           url += '/' + encodeURIComponent(s || 1) + '/' + encodeURIComponent(e || 1);
         }
         return url;
       } else {
-        // Fallback/Default: betterflix
-        var typeVal = type === 'movie' ? 'movie' : 'tv';
-        var seasonVal = typeVal === 'tv' ? (s || 1) : '';
-        var episodeVal = typeVal === 'tv' ? (e || 1) : '';
-        return 'https://betterflix.click/api/player?id=' + encodeURIComponent(id) +
-          '&type=' + encodeURIComponent(typeVal) +
-          '&season=' + encodeURIComponent(seasonVal) +
-          '&episode=' + encodeURIComponent(episodeVal) +
-          '&source=source3';
+        // Principal/Padrão: warezcdn
+        var typeStr = type === 'movie' ? 'filme' : 'serie';
+        var url = 'https://embed.warezcdn.link/' + typeStr + '/' + encodeURIComponent(id);
+        if (type === 'tv') {
+          url += '/' + encodeURIComponent(s || 1) + '/' + encodeURIComponent(e || 1);
+        }
+        return url;
       }
     }
 
@@ -3035,7 +3033,7 @@
       state.currentSeason = null;
       state.currentEpisode = null;
       state.currentEpisodeTitle = null;
-      state.activeServer = 'betterflix';
+      state.activeServer = 'warezcdn';
       state.lastFocused = document.activeElement;
 
       state.cleanups = new AbortController();
@@ -3333,17 +3331,13 @@
 
     /*
      * Injeta o iframe no #player-mount.
-     * Fluxo: BetterFlix (padrão) → WarezCDN (fallback silencioso após 8s).
+     * Fluxo: WarezCDN (padrão) com seletor manual para VidSrc.
      *
      * DESIGN:
      *   - $mount.innerHTML = '' remove QUALQUER filho anterior (iframe, erro, loading).
      *     Mais seguro que rastrear nós individualmente — zero memory leak.
-     *   - iframe.style via Object.assign: posicionamento absoluto preenche 100% do
-     *     mount. CSS externo reforça como fallback, mas inline garante mesmo se o
-     *     stylesheet falhar.
-     *   - Fallback usa iframe.onload (propriedade) em vez de addEventListener.
-     *     Mais leve e sobrescreve qualquer handler anterior automaticamente.
-     *   - setTimeout de 8s: se onload não disparou, troca o src silenciosamente.
+     *   - iframe.style: preenche 100% do mount.
+     *   - onload limpa classe de loading.
      */
     function createIframe(item, season, episode) {
       destroyIframe();
@@ -3395,7 +3389,7 @@
       };
       // URL baseada no servidor ativo
       var url = trocarIframePlayer(state.activeServer, item.tmdbId, item.mediaType, season, episode);
-      console.log('[Player] Carregando ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'BetterFlix') + ':', url);
+      console.log('[Player] Carregando ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', url);
 
       iframe.src = url;
 
@@ -3413,9 +3407,11 @@
 
       if (state.iframe) {
         // about:blank antes de remover: corta áudio/banda no Chromium.
-        try { state.iframe.src = 'about:blank'; } catch (e) { /* noop */ }
-        state.iframe.onload = null;
-        state.iframe.onerror = null;
+        try {
+          state.iframe.onload = null;
+          state.iframe.onerror = null;
+          state.iframe.src = 'about:blank';
+        } catch (e) { /* noop */ }
         state.iframe = null;
       }
 
@@ -3425,7 +3421,7 @@
 
     /**
      * Injeta o seletor de servidores (botões flutuantes) por cima do player de vídeo.
-     * Mapeia os servidores BetterFlix e WarezCDN e cuida do chaveamento reativo.
+     * Mapeia os servidores WarezCDN e VidSrc e cuida do chaveamento reativo.
      *
      * @param {number} tmdbId
      * @param {'movie'|'tv'} type
@@ -3447,8 +3443,8 @@
       container.setAttribute('aria-label', 'Seletor de Servidores');
 
       var servers = [
-        { id: 'betterflix', name: 'BetterFlix', icon: '⚡' },
-        { id: 'warezcdn', name: 'WarezCDN', icon: '🛡️' }
+        { id: 'warezcdn', name: 'WarezCDN (Dublado)', icon: '🔊' },
+        { id: 'vidsrc', name: 'VidSrc (Legendado HD)', icon: '📝' }
       ];
 
       servers.forEach(function (server) {
@@ -3491,7 +3487,7 @@
      * Chaveia de forma dinâmica o iframe do player, caçando e destruindo o anterior
      * de forma estrita para evitar memory leaks na GPU do Android.
      *
-     * @param {'betterflix'|'warezcdn'} newServer
+     * @param {'warezcdn'|'vidsrc'} newServer
      */
     function switchServer(newServer) {
       if (!state.currentItem) return;
@@ -3501,7 +3497,11 @@
       // 1. Caçar e destruir de forma estrita o iframe anterior usando element.remove()
       var oldIframe = $mount.querySelector('iframe');
       if (oldIframe) {
-        try { oldIframe.src = 'about:blank'; } catch (e) { }
+        try {
+          oldIframe.onload = null;
+          oldIframe.onerror = null;
+          oldIframe.src = 'about:blank';
+        } catch (e) { }
         oldIframe.remove();
       }
       state.iframe = null;
@@ -3522,7 +3522,7 @@
         iframe.classList.remove('loading');
       };
       var url = trocarIframePlayer(state.activeServer, state.currentItem.tmdbId, state.currentItem.mediaType, state.currentSeason, state.currentEpisode);
-      console.log('[Player] Chaveando para ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'BetterFlix') + ':', url);
+      console.log('[Player] Chaveando para ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', url);
 
       iframe.src = url;
       state.iframe = iframe;
