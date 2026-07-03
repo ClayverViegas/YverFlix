@@ -3373,6 +3373,7 @@
       iframe.setAttribute('frameborder', '0');
       iframe.setAttribute('width', '100%');
       iframe.setAttribute('height', '100%');
+      iframe.setAttribute('referrerpolicy', 'origin');
       iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
       iframe.setAttribute('allowfullscreen', 'true');
       iframe.removeAttribute('sandbox'); // Garante que não possui sandbox
@@ -3517,6 +3518,7 @@
       iframe.setAttribute('frameborder', '0');
       iframe.setAttribute('width', '100%');
       iframe.setAttribute('height', '100%');
+      iframe.setAttribute('referrerpolicy', 'origin');
       iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
       iframe.setAttribute('allowfullscreen', 'true');
       iframe.removeAttribute('sandbox'); // Garante que não possui sandbox
