@@ -3374,7 +3374,7 @@
       iframe.setAttribute('width', '100%');
       iframe.setAttribute('height', '100%');
       iframe.setAttribute('referrerpolicy', 'origin');
-      iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
+      iframe.setAttribute('allow', 'fullscreen; accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
       iframe.setAttribute('allowfullscreen', 'true');
       iframe.removeAttribute('sandbox'); // Garante que não possui sandbox
 
@@ -3519,7 +3519,7 @@
       iframe.setAttribute('width', '100%');
       iframe.setAttribute('height', '100%');
       iframe.setAttribute('referrerpolicy', 'origin');
-      iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
+      iframe.setAttribute('allow', 'fullscreen; accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
       iframe.setAttribute('allowfullscreen', 'true');
       iframe.removeAttribute('sandbox'); // Garante que não possui sandbox
 
