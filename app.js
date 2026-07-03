@@ -3341,23 +3341,6 @@
      *   - iframe.style: preenche 100% do mount.
      *   - onload limpa classe de loading.
      */
-    async function openPlayer(url) {
-      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-        try {
-          await window.Capacitor.Plugins.Browser.open({
-            url: url,
-            windowName: '_blank',
-            presentationStyle: 'fullscreen'
-          });
-        } catch (e) {
-          console.error('[Browser Plugin Error]', e);
-          window.open(url, '_blank');
-        }
-      } else {
-        window.open(url, '_blank');
-      }
-    }
-
     function createIframe(item, season, episode) {
       destroyIframe();
 
@@ -3385,70 +3368,41 @@
       titleEl.textContent = label;
       $mount.appendChild(titleEl);
 
+      // 3. Construção do iframe
+      var iframe = document.createElement('iframe');
+      iframe.setAttribute('frameborder', '0');
+      iframe.setAttribute('width', '100%');
+      iframe.setAttribute('height', '100%');
+      iframe.setAttribute('referrerpolicy', 'origin');
+      iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
+      iframe.setAttribute('allowfullscreen', 'true');
+      iframe.removeAttribute('sandbox'); // Garante que não possui sandbox
+
+      // Estilos inline: posicionamento relativo para fluxo normal
+      iframe.style.width = '100%';
+      iframe.style.flex = '1';
+      iframe.style.border = 'none';
+      iframe.style.position = 'relative';
+      iframe.style.background = '#000';
+
+      state.iframe = iframe;
+
+      // Adiciona classe de loading e listener onload
+      iframe.classList.add('loading');
+      iframe.onload = function () {
+        iframe.classList.remove('loading');
+      };
+
       // URL baseada no servidor ativo
       var urlGerada = trocarIframePlayer(state.activeServer, item.tmdbId, item.mediaType, season, episode);
       console.log('[YverFlix Player] URL gerada:', urlGerada);
       console.log('[Player] Geração de URL - tmdbId:', item.tmdbId, 'season:', season, 'episode:', episode, '-> URL:', urlGerada);
       console.log('[Player] Carregando ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', urlGerada);
 
-      // Injeta card premium com botão para abrir o player
-      var card = document.createElement('div');
-      card.className = 'player-launcher-card';
-      Object.assign(card.style, {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flex: '1',
-        minHeight: '320px',
-        background: 'linear-gradient(145deg, #0d0d0d, #141414)',
-        border: '1px solid rgba(255, 0, 85, 0.3)',
-        borderRadius: '16px',
-        padding: '40px 20px',
-        margin: '20px auto',
-        maxWidth: '500px',
-        textAlign: 'center',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 15px rgba(255, 0, 85, 0.15)'
-      });
+      iframe.src = urlGerada;
 
-      card.innerHTML = 
-        '<div style="font-size: 64px; margin-bottom: 20px; filter: drop-shadow(0 0 12px #ff0055); animation: pulse 2s infinite;">🎬</div>' +
-        '<h3 style="color: #fff; margin-bottom: 12px; font-family: sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">Assistir no Player Externo</h3>' +
-        '<p style="color: #999; max-width: 380px; margin-bottom: 30px; font-size: 14px; line-height: 1.6; font-family: sans-serif;">' +
-          'Para garantir reprodução estável, sem anúncios abusivos ou travamentos, o player será aberto no navegador seguro do seu dispositivo.' +
-        '</p>' +
-        '<button id="reopen-player-btn" style="' +
-          'background: linear-gradient(135deg, #ff0055, #ff007f);' +
-          'color: #fff;' +
-          'border: none;' +
-          'padding: 14px 40px;' +
-          'font-size: 16px;' +
-          'font-weight: 700;' +
-          'border-radius: 30px;' +
-          'cursor: pointer;' +
-          'letter-spacing: 1px;' +
-          'box-shadow: 0 4px 15px rgba(255, 0, 85, 0.4);' +
-          'transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);' +
-          'outline: none;' +
-        '">ABRIR PLAYER</button>';
-
-      $mount.appendChild(card);
-
-      var btn = card.querySelector('#reopen-player-btn');
-      btn.addEventListener('click', function() {
-        openPlayer(urlGerada);
-      });
-      btn.addEventListener('mouseover', function() {
-        btn.style.transform = 'translateY(-2px)';
-        btn.style.boxShadow = '0 6px 20px rgba(255, 0, 85, 0.6)';
-      });
-      btn.addEventListener('mouseout', function() {
-        btn.style.transform = 'translateY(0)';
-        btn.style.boxShadow = '0 4px 15px rgba(255, 0, 85, 0.4)';
-      });
-
-      // Abre automaticamente na primeira vez
-      openPlayer(urlGerada);
+      // Injeta no DOM após o título.
+      $mount.appendChild(iframe);
     }
 
     /*
@@ -3548,51 +3502,56 @@
       if (state.activeServer === newServer) return;
       state.activeServer = newServer;
 
-      // 1. Caçar e destruir de forma estrita o iframe anterior usando element.remove()
-      var oldIframe = $mount.querySelector('iframe');
-      if (oldIframe) {
+      // 1. Destruir iframe anterior
+      if (state.iframe) {
         try {
-          oldIframe.onload = null;
-          oldIframe.onerror = null;
-          oldIframe.src = 'about:blank';
-        } catch (e) { }
-        oldIframe.remove();
+          state.iframe.onload = null;
+          state.iframe.onerror = null;
+          state.iframe.src = 'about:blank';
+        } catch (e) { /* noop */ }
+        state.iframe.remove();
       }
       state.iframe = null;
 
-      // 2. Obter a nova URL
+      // 2. Criar e injetar o novo iframe
+      var iframe = document.createElement('iframe');
+      iframe.setAttribute('frameborder', '0');
+      iframe.setAttribute('width', '100%');
+      iframe.setAttribute('height', '100%');
+      iframe.setAttribute('referrerpolicy', 'origin');
+      iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
+      iframe.setAttribute('allowfullscreen', 'true');
+      iframe.removeAttribute('sandbox'); // Garante que não possui sandbox
+
+      iframe.style.width = '100%';
+      iframe.style.flex = '1';
+      iframe.style.border = 'none';
+      iframe.style.position = 'relative';
+      iframe.style.background = '#000';
+
+      // Adiciona classe de loading e listener onload
+      iframe.classList.add('loading');
+      iframe.onload = function () {
+        iframe.classList.remove('loading');
+      };
+
       var urlGerada = trocarIframePlayer(state.activeServer, state.currentItem.tmdbId, state.currentItem.mediaType, state.currentSeason, state.currentEpisode);
-      console.log('[YverFlix Player] Nova URL para switch:', urlGerada);
+      console.log('[YverFlix Player] URL gerada:', urlGerada);
       console.log('[Player] Geração de URL (switch) - tmdbId:', state.currentItem.tmdbId, 'season:', state.currentSeason, 'episode:', state.currentEpisode, '-> URL:', urlGerada);
       console.log('[Player] Chaveando para ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', urlGerada);
 
-      // 3. Atualizar o clique do botão ABRIR PLAYER (se o card existir)
-      var btn = $mount.querySelector('#reopen-player-btn');
-      if (btn) {
-        var newBtn = btn.cloneNode(true);
-        btn.parentNode.replaceChild(newBtn, btn);
-        newBtn.addEventListener('click', function() {
-          openPlayer(urlGerada);
-        });
-        newBtn.addEventListener('mouseover', function() {
-          newBtn.style.transform = 'translateY(-2px)';
-          newBtn.style.boxShadow = '0 6px 20px rgba(255, 0, 85, 0.6)';
-        });
-        newBtn.addEventListener('mouseout', function() {
-          newBtn.style.transform = 'translateY(0)';
-          newBtn.style.boxShadow = '0 4px 15px rgba(255, 0, 85, 0.4)';
-        });
-      }
+      iframe.src = urlGerada;
+      state.iframe = iframe;
 
-      // 4. Disparar a abertura automática do novo player
-      openPlayer(urlGerada);
+      // Injeta o novo iframe no final do mount (mantendo a pilha flexbox correta)
+      $mount.appendChild(iframe);
 
-      // 5. Atualizar o destaque visual dos botões do seletor
+      // Atualizar o destaque visual dos botões
       var buttons = $mount.querySelectorAll('.player-server-btn');
-      buttons.forEach(function (btnEl) {
-        var isCurrent = btnEl.dataset.server === state.activeServer;
-        btnEl.classList.toggle('player-server-btn--active', isCurrent);
-        btnEl.setAttribute('aria-pressed', isCurrent ? 'true' : 'false');
+      buttons.forEach(function (btn) {
+        var isCurrent = btn.dataset.server === state.activeServer;
+        btn.classList.toggle('player-server-btn--active', isCurrent);
+        btn.setAttribute('aria-pressed', isCurrent ? 'true' : 'false');
       });
     }
 
