@@ -3408,6 +3408,36 @@
 
       // Injeta no DOM após o título.
       $mount.appendChild(wrapper);
+
+      // Cria a barra de utilitários discreta abaixo do container
+      var actionsBar = document.createElement('div');
+      actionsBar.className = 'player-actions-bar';
+      
+      var expandBtn = document.createElement('button');
+      expandBtn.type = 'button';
+      expandBtn.className = 'btn-expandir-player';
+      expandBtn.innerHTML = '<span class="player-server-icon" aria-hidden="true">🔲</span> <span>Expandir</span>';
+      
+      expandBtn.addEventListener('click', function () {
+        var iframePlayer = document.querySelector('.player-container iframe') || document.querySelector('iframe');
+        
+        // 1. Aciona a API HTML5 Fullscreen
+        if (iframePlayer) {
+          if (iframePlayer.requestFullscreen) {
+            iframePlayer.requestFullscreen();
+          } else if (iframePlayer.webkitRequestFullscreen) {
+            iframePlayer.webkitRequestFullscreen();
+          }
+        }
+
+        // 2. Aciona a ponte nativa do Android
+        if (window.AndroidBridge && typeof window.AndroidBridge.rotateToLandscape === 'function') {
+          window.AndroidBridge.rotateToLandscape();
+        }
+      });
+
+      actionsBar.appendChild(expandBtn);
+      $mount.appendChild(actionsBar);
     }
 
     /*
