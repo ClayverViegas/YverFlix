@@ -4759,3 +4759,17 @@ document.addEventListener('fullscreenchange', () => {
     }
 });
 
+// Força rotação para landscape ao tocar na área do player
+const playerContainer = document.getElementById('player-mount');
+if (playerContainer) {
+    const handleRotate = (event) => {
+        // Verifica se a ponte existe e gira a tela para landscape
+        if (window.AndroidBridge && typeof window.AndroidBridge.rotateToLandscape === 'function') {
+            window.AndroidBridge.rotateToLandscape();
+        }
+    };
+    playerContainer.addEventListener('click', handleRotate);
+    playerContainer.addEventListener('touchstart', handleRotate);
+}
+
+
