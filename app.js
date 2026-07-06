@@ -3401,8 +3401,13 @@
 
       iframe.src = urlGerada;
 
+      // Wrapper para responsividade no mobile (esconder barra de controle / scale)
+      var wrapper = document.createElement('div');
+      wrapper.className = 'player-iframe-wrapper';
+      wrapper.appendChild(iframe);
+
       // Injeta no DOM após o título.
-      $mount.appendChild(iframe);
+      $mount.appendChild(wrapper);
     }
 
     /*
@@ -3543,8 +3548,14 @@
       iframe.src = urlGerada;
       state.iframe = iframe;
 
-      // Injeta o novo iframe no final do mount (mantendo a pilha flexbox correta)
-      $mount.appendChild(iframe);
+      // Injeta o novo iframe no wrapper (garantindo que ele exista)
+      var wrapper = $mount.querySelector('.player-iframe-wrapper');
+      if (!wrapper) {
+        wrapper = document.createElement('div');
+        wrapper.className = 'player-iframe-wrapper';
+        $mount.appendChild(wrapper);
+      }
+      wrapper.appendChild(iframe);
 
       // Atualizar o destaque visual dos botões
       var buttons = $mount.querySelectorAll('.player-server-btn');
