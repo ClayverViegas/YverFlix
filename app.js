@@ -3481,16 +3481,6 @@
         container.appendChild(btn);
       });
 
-      // Botão elegante de Tela Cheia / Girar Tela
-      var rotateBtn = document.createElement('button');
-      rotateBtn.type = 'button';
-      rotateBtn.className = 'player-rotate-btn';
-      rotateBtn.innerHTML = '<span class="player-server-icon" aria-hidden="true">🔲</span> ' +
-        '<span>Assistir em Tela Cheia</span>';
-      rotateBtn.addEventListener('click', function () {
-        ativarTelaCheiaECompleta();
-      });
-      container.appendChild(rotateBtn);
 
       // Estilização do selectorContainer
       Object.assign(container.style, {
@@ -4781,27 +4771,6 @@ document.addEventListener('fullscreenchange', () => {
     }
 });
 
-function ativarTelaCheiaECompleta() {
-    const iframePlayer = document.querySelector('.player-container iframe') || document.querySelector('iframe');
-    
-    // 1. Expande o elemento do vídeo para cobrir 100% da tela do navegador
-    if (iframePlayer) {
-        if (iframePlayer.requestFullscreen) {
-            iframePlayer.requestFullscreen();
-        } else if (iframePlayer.webkitRequestFullscreen) {
-            iframePlayer.webkitRequestFullscreen(); // Suporte Safari/WebKit antigo
-        } else if (iframePlayer.mozRequestFullScreen) {
-            iframePlayer.mozRequestFullScreen(); // Firefox antigo
-        } else if (iframePlayer.msRequestFullscreen) {
-            iframePlayer.msRequestFullscreen(); // IE/Edge antigo
-        }
-    }
-
-    // 2. Chama a ponte nativa do Android para deitar o celular fisicamente
-    if (window.AndroidBridge && typeof window.AndroidBridge.rotateToLandscape === 'function') {
-        window.AndroidBridge.rotateToLandscape();
-    }
-}
 
 
 
