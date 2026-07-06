@@ -1438,24 +1438,33 @@ body {
   overflow: hidden;
 }
 
-.player-iframe-wrapper {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #000;
+.player-iframe-wrapper,
+.player-container {
+    position: relative;
+    width: 100%;
+    min-width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
-.player-iframe-wrapper iframe {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  flex: 1;
-  border: none;
-  background: #000;
+.player-iframe-wrapper iframe,
+.player-container iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #000;
+}
+
+/* Em telas menores que 420px na vertical, damos um leve respiro no layout para evitar o corte dos ícones do player sem perder nitidez */
+@media (max-width: 420px) {
+    .player-iframe-wrapper iframe,
+    .player-container iframe {
+        /* Forçamos a largura mínima exata para renderizar a barra de controles completa do WarezCDN */
+        min-width: 435px;
+    }
 }
 
 /* ---- Mobile (≤ 640px) ----------------------------------------------- */

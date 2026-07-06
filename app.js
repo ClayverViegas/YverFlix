@@ -3403,7 +3403,7 @@
 
       // Wrapper para responsividade no mobile (esconder barra de controle / scale)
       var wrapper = document.createElement('div');
-      wrapper.className = 'player-iframe-wrapper';
+      wrapper.className = 'player-iframe-wrapper player-container';
       wrapper.appendChild(iframe);
 
       // Injeta no DOM após o título.
@@ -3488,9 +3488,7 @@
       rotateBtn.innerHTML = '<span class="player-server-icon" aria-hidden="true">🔲</span> ' +
         '<span>Assistir em Tela Cheia</span>';
       rotateBtn.addEventListener('click', function () {
-        if (window.AndroidBridge && typeof window.AndroidBridge.rotateToLandscape === 'function') {
-          window.AndroidBridge.rotateToLandscape();
-        }
+        ativarTelaCheiaECompleta();
       });
       container.appendChild(rotateBtn);
 
@@ -3565,7 +3563,7 @@
       var wrapper = $mount.querySelector('.player-iframe-wrapper');
       if (!wrapper) {
         wrapper = document.createElement('div');
-        wrapper.className = 'player-iframe-wrapper';
+        wrapper.className = 'player-iframe-wrapper player-container';
         $mount.appendChild(wrapper);
       }
       wrapper.appendChild(iframe);
@@ -4782,6 +4780,28 @@ document.addEventListener('fullscreenchange', () => {
         }
     }
 });
+
+function ativarTelaCheiaECompleta() {
+    const iframePlayer = document.querySelector('.player-container iframe') || document.querySelector('iframe');
+    
+    // 1. Expande o elemento do vídeo para cobrir 100% da tela do navegador
+    if (iframePlayer) {
+        if (iframePlayer.requestFullscreen) {
+            iframePlayer.requestFullscreen();
+        } else if (iframePlayer.webkitRequestFullscreen) {
+            iframePlayer.webkitRequestFullscreen(); // Suporte Safari/WebKit antigo
+        } else if (iframePlayer.mozRequestFullScreen) {
+            iframePlayer.mozRequestFullScreen(); // Firefox antigo
+        } else if (iframePlayer.msRequestFullscreen) {
+            iframePlayer.msRequestFullscreen(); // IE/Edge antigo
+        }
+    }
+
+    // 2. Chama a ponte nativa do Android para deitar o celular fisicamente
+    if (window.AndroidBridge && typeof window.AndroidBridge.rotateToLandscape === 'function') {
+        window.AndroidBridge.rotateToLandscape();
+    }
+}
 
 
 
