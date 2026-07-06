@@ -4745,10 +4745,17 @@
   window.YverFlix.getCurrentUserId = getCurrentUserId;
 })();
 
-window.addEventListener('load', () => {
-    // Verifica se a ponte existe e gira a tela para landscape
-    if (window.AndroidBridge && typeof window.AndroidBridge.rotateToLandscape === 'function') {
-        window.AndroidBridge.rotateToLandscape();
+document.addEventListener('fullscreenchange', () => {
+    // Verifica se o player entrou em fullscreen
+    if (document.fullscreenElement) {
+        if (window.AndroidBridge && typeof window.AndroidBridge.rotateToLandscape === 'function') {
+            window.AndroidBridge.rotateToLandscape();
+        }
+    } else {
+        // Se saiu do fullscreen, volta para portrait
+        if (window.AndroidBridge && typeof window.AndroidBridge.rotateToPortrait === 'function') {
+            window.AndroidBridge.rotateToPortrait();
+        }
     }
 });
 
