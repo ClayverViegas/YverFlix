@@ -1458,27 +1458,6 @@ body {
   background: #000;
 }
 
-/* Regras específicas para mobile vertical (portrait) para liberar os botões do iframe scaling */
-@media (max-width: 500px) and (orientation: portrait) {
-  .player-iframe-wrapper {
-    aspect-ratio: 16 / 9;
-    overflow: hidden;
-    width: 100%;
-    position: relative;
-    height: auto;
-    flex: none;
-  }
-  
-  .player-iframe-wrapper iframe {
-    width: 540px !important;
-    height: 303.75px !important;
-    transform-origin: top left;
-    transform: scale(calc(100vw / 540));
-    transform: scale(calc(100vw / 540px));
-    flex: none !important;
-  }
-}
-
 /* ---- Mobile (≤ 640px) ----------------------------------------------- */
 @media (max-width: 640px) {
   .hero { min-height: clamp(180px, 32vh, 320px); }
@@ -2162,6 +2141,40 @@ body {
 
 .player-server-icon {
   font-size: 0.9rem;
+}
+
+.player-rotate-btn {
+  background: rgba(10, 10, 15, 0.85);
+  color: #7eb8ff;
+  border: 1px solid rgba(126, 184, 255, 0.4);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.player-rotate-btn:hover,
+.player-rotate-btn:focus-visible {
+  transform: translateY(-2px);
+  background: rgba(12, 15, 25, 0.95);
+  border-color: rgba(126, 184, 255, 0.7);
+  color: #ffeef0;
+  box-shadow: 0 6px 14px rgba(126, 184, 255, 0.25), 
+              0 0 10px rgba(126, 184, 255, 0.2),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.player-rotate-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 /* ============================================================

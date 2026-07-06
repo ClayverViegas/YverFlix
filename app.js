@@ -3481,6 +3481,19 @@
         container.appendChild(btn);
       });
 
+      // Botão elegante de Tela Cheia / Girar Tela
+      var rotateBtn = document.createElement('button');
+      rotateBtn.type = 'button';
+      rotateBtn.className = 'player-rotate-btn';
+      rotateBtn.innerHTML = '<span class="player-server-icon" aria-hidden="true">🔲</span> ' +
+        '<span>Assistir em Tela Cheia</span>';
+      rotateBtn.addEventListener('click', function () {
+        if (window.AndroidBridge && typeof window.AndroidBridge.rotateToLandscape === 'function') {
+          window.AndroidBridge.rotateToLandscape();
+        }
+      });
+      container.appendChild(rotateBtn);
+
       // Estilização do selectorContainer
       Object.assign(container.style, {
         position: 'relative',
@@ -4770,17 +4783,5 @@ document.addEventListener('fullscreenchange', () => {
     }
 });
 
-// Força rotação para landscape ao tocar na área do player
-const playerContainer = document.getElementById('player-mount');
-if (playerContainer) {
-    const handleRotate = (event) => {
-        // Verifica se a ponte existe e gira a tela para landscape
-        if (window.AndroidBridge && typeof window.AndroidBridge.rotateToLandscape === 'function') {
-            window.AndroidBridge.rotateToLandscape();
-        }
-    };
-    playerContainer.addEventListener('click', handleRotate);
-    playerContainer.addEventListener('touchstart', handleRotate);
-}
 
 
