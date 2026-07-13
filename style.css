@@ -6,7 +6,15 @@
 
 /* ---- Reset enxuto ---------------------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; }
-html, body { margin: 0; }
+html, body {
+    background-color: #000 !important;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    /* Expande o conteúdo até a borda real do aparelho, incluindo o notch */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
 img { display: block; max-width: 100%; height: auto; }
 button { font: inherit; }
 a { color: inherit; }
