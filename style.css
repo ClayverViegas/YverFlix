@@ -1452,17 +1452,22 @@ body {
     position: relative;
     width: 100%;
     aspect-ratio: 16 / 9;
-    background: #000;
-    overflow: hidden;
+    background-color: #000;
+    margin: 0;
+    padding: 0;
+    /* touch-action: pan-y permite o scroll vertical da página, mas entrega todos os outros toques pro iframe */
+    touch-action: pan-y; 
 }
 
 .player-iframe-wrapper iframe,
 .player-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     border: none;
     display: block;
-    background: #000;
 }
 
 .player-actions-bar {
