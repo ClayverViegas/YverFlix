@@ -12,8 +12,10 @@ html, body {
     height: 100%;
     margin: 0;
     padding: 0;
-    /* Expande o conteúdo até a borda real do aparelho, incluindo o notch */
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    
+    /* 🚀 A MÁGICA AQUI: Bloqueia o zoom de duplo clique do WebView */
+    touch-action: manipulation; 
 }
 img { display: block; max-width: 100%; height: auto; }
 button { font: inherit; }
@@ -1449,23 +1451,14 @@ body {
 
 .player-iframe-wrapper,
 .player-container {
-    position: relative;
     width: 100%;
-    aspect-ratio: 16 / 9;
     background-color: #000;
-    margin: 0;
-    padding: 0;
-    /* touch-action: pan-y permite o scroll vertical da página, mas entrega todos os outros toques pro iframe */
-    touch-action: pan-y; 
 }
 
 .player-iframe-wrapper iframe,
 .player-container iframe {
-    position: absolute;
-    top: 0;
-    left: 0;
     width: 100%;
-    height: 100%;
+    aspect-ratio: 16 / 9;
     border: none;
     display: block;
 }
