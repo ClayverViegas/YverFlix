@@ -1449,27 +1449,16 @@ body {
   overflow: hidden;
 }
 
-/* Regra base para a wrapper do player */
+/* Wrapper principal do player */
 .player-iframe-wrapper,
 .player-container {
     width: 100%;
-    max-width: 100%;
+    max-width: 1000px; /* Limite excelente para telas grandes/desktop */
     aspect-ratio: 16 / 9;
     background-color: #000;
     position: relative;
-    margin: 0 auto;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-/* No Desktop/PC, limitamos a altura máxima para o player caber inteiro na tela visível */
-@media (min-width: 768px) {
-    .player-iframe-wrapper,
-    .player-container {
-        max-height: 75vh; /* Evita que o vídeo estoure a tela para baixo no PC */
-        width: auto;      /* Mantém a proporção 16:9 ajustada pela altura */
-    }
+    margin: 0 auto; /* Centraliza no PC */
+    display: block;
 }
 
 .player-iframe-wrapper iframe,
