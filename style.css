@@ -1449,16 +1449,23 @@ body {
   overflow: hidden;
 }
 
-/* Wrapper principal do player */
 .player-iframe-wrapper,
 .player-container {
     width: 100%;
-    max-width: 1000px; /* Limite excelente para telas grandes/desktop */
+    max-width: 880px; /* Redução fina para caber perfeitamente na tela */
     aspect-ratio: 16 / 9;
     background-color: #000;
     position: relative;
-    margin: 0 auto; /* Centraliza no PC */
+    margin: 0 auto;
     display: block;
+}
+
+/* Garantia extra para monitores menores ou com pouca altura na janela */
+@media (min-width: 768px) {
+    .player-iframe-wrapper,
+    .player-container {
+        max-height: 70vh; /* Força o player a não ultrapassar 70% da altura da tela */
+    }
 }
 
 .player-iframe-wrapper iframe,
