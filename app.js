@@ -2977,7 +2977,7 @@
       currentEpisodeTitle: null,
       cleanups: null,
       lastFocused: null,
-      activeServer: 'warezcdn', // Default server (Principal/Padrão)
+      activeServer: 'pomfy', // Default server (Principal/Padrão)
     };
 
     /**
@@ -2997,11 +2997,11 @@
           return 'https://vsembed.ru/embed/tv?tmdb=' + encodeURIComponent(tmdbId) + '&season=' + encodeURIComponent(season) + '&episode=' + encodeURIComponent(episode);
         }
       } else {
-        // Principal/Padrão: warezcdn (.lat com hashes #color=E50914#nolink)
+        // Principal/Padrão: Pomfy (api.pomfy.stream)
         if (type === 'movie') {
-          return 'https://warezcdn.lat/filme/' + encodeURIComponent(tmdbId) + '#color=E50914#nolink';
+          return 'https://api.pomfy.stream/filme/' + encodeURIComponent(tmdbId);
         } else {
-          return 'https://warezcdn.lat/serie/' + encodeURIComponent(tmdbId) + '/' + encodeURIComponent(season) + '/' + encodeURIComponent(episode) + '#color=E50914#nolink';
+          return 'https://api.pomfy.stream/serie/' + encodeURIComponent(tmdbId) + '/' + encodeURIComponent(season) + '/' + encodeURIComponent(episode);
         }
       }
     }
@@ -3035,7 +3035,7 @@
       state.currentSeason = null;
       state.currentEpisode = null;
       state.currentEpisodeTitle = null;
-      state.activeServer = 'warezcdn';
+      state.activeServer = 'pomfy';
       state.lastFocused = document.activeElement;
 
       state.cleanups = new AbortController();
@@ -3333,7 +3333,7 @@
 
     /*
      * Injeta o iframe no #player-mount.
-     * Fluxo: WarezCDN (padrão) com seletor manual para VidSrc.
+     * Fluxo: Pomfy (padrão) com seletor manual para VidSrc.
      *
      * DESIGN:
      *   - $mount.innerHTML = '' remove QUALQUER filho anterior (iframe, erro, loading).
@@ -3397,7 +3397,7 @@
       var urlGerada = trocarIframePlayer(state.activeServer, item.tmdbId, item.mediaType, season, episode);
       console.log('[YverFlix Player] URL gerada:', urlGerada);
       console.log('[Player] Geração de URL - tmdbId:', item.tmdbId, 'season:', season, 'episode:', episode, '-> URL:', urlGerada);
-      console.log('[Player] Carregando ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', urlGerada);
+      console.log('[Player] Carregando ' + (state.activeServer === 'pomfy' ? 'Pomfy' : 'VidSrc') + ':', urlGerada);
 
       iframe.src = urlGerada;
 
@@ -3464,7 +3464,7 @@
 
     /**
      * Injeta o seletor de servidores (botões flutuantes) por cima do player de vídeo.
-     * Mapeia os servidores WarezCDN e VidSrc e cuida do chaveamento reativo.
+     * Mapeia os servidores Pomfy e VidSrc e cuida do chaveamento reativo.
      *
      * @param {number} tmdbId
      * @param {'movie'|'tv'} type
@@ -3486,7 +3486,7 @@
       container.setAttribute('aria-label', 'Seletor de Servidores');
 
       var servers = [
-        { id: 'warezcdn', name: 'WarezCDN (Dublado)', icon: '🔊' },
+        { id: 'pomfy', name: 'Pomfy (Dublado)', icon: '🔊' },
         { id: 'vidsrc', name: 'VidSrc (Legendado HD)', icon: '📝' }
       ];
 
@@ -3531,7 +3531,7 @@
      * Chaveia de forma dinâmica o iframe do player, caçando e destruindo o anterior
      * de forma estrita para evitar memory leaks na GPU do Android.
      *
-     * @param {'warezcdn'|'vidsrc'} newServer
+     * @param {'pomfy'|'vidsrc'} newServer
      */
     function switchServer(newServer) {
       if (!state.currentItem) return;
@@ -3574,7 +3574,7 @@
       var urlGerada = trocarIframePlayer(state.activeServer, state.currentItem.tmdbId, state.currentItem.mediaType, state.currentSeason, state.currentEpisode);
       console.log('[YverFlix Player] URL gerada:', urlGerada);
       console.log('[Player] Geração de URL (switch) - tmdbId:', state.currentItem.tmdbId, 'season:', state.currentSeason, 'episode:', state.currentEpisode, '-> URL:', urlGerada);
-      console.log('[Player] Chaveando para ' + (state.activeServer === 'warezcdn' ? 'WarezCDN' : 'VidSrc') + ':', urlGerada);
+      console.log('[Player] Chaveando para ' + (state.activeServer === 'pomfy' ? 'Pomfy' : 'VidSrc') + ':', urlGerada);
 
       iframe.src = urlGerada;
       state.iframe = iframe;
