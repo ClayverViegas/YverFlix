@@ -3376,11 +3376,12 @@
       iframe.setAttribute('referrerpolicy', 'origin');
       iframe.setAttribute('allow', 'fullscreen; accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
       iframe.setAttribute('allowfullscreen', 'true');
-      // Sandbox: os provedores (Pomfy/VidSrc) precisam rodar script e abrir
-      // popups (players de vídeo costumam depender disso), mas SEM
-      // allow-top-navigation — impede que um ad malicioso redirecione a
-      // aba inteira do YverFlix para outro site.
-      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms allow-presentation allow-popups-to-escape-sandbox');
+      // REVERTIDO (ver commit anterior): o atributo sandbox mudou como o
+      // Referer/Origin chega ao Pomfy, que faz allowlist de domínio no
+      // embed e passou a bloquear com "conteúdo bloqueado". Sem sandbox
+      // por enquanto — precisa de outra estratégia pra mitigar
+      // sequestro de navegação sem quebrar a autorização do provedor.
+      iframe.removeAttribute('sandbox');
 
       // Estilos inline: posicionamento relativo para fluxo normal
       iframe.style.width = '100%';
@@ -3561,11 +3562,12 @@
       iframe.setAttribute('referrerpolicy', 'origin');
       iframe.setAttribute('allow', 'fullscreen; accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
       iframe.setAttribute('allowfullscreen', 'true');
-      // Sandbox: os provedores (Pomfy/VidSrc) precisam rodar script e abrir
-      // popups (players de vídeo costumam depender disso), mas SEM
-      // allow-top-navigation — impede que um ad malicioso redirecione a
-      // aba inteira do YverFlix para outro site.
-      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms allow-presentation allow-popups-to-escape-sandbox');
+      // REVERTIDO (ver commit anterior): o atributo sandbox mudou como o
+      // Referer/Origin chega ao Pomfy, que faz allowlist de domínio no
+      // embed e passou a bloquear com "conteúdo bloqueado". Sem sandbox
+      // por enquanto — precisa de outra estratégia pra mitigar
+      // sequestro de navegação sem quebrar a autorização do provedor.
+      iframe.removeAttribute('sandbox');
 
       iframe.style.width = '100%';
       iframe.style.flex = '1';
