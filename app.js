@@ -3376,7 +3376,11 @@
       iframe.setAttribute('referrerpolicy', 'origin');
       iframe.setAttribute('allow', 'fullscreen; accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
       iframe.setAttribute('allowfullscreen', 'true');
-      iframe.removeAttribute('sandbox'); // Garante que não possui sandbox
+      // Sandbox: os provedores (Pomfy/VidSrc) precisam rodar script e abrir
+      // popups (players de vídeo costumam depender disso), mas SEM
+      // allow-top-navigation — impede que um ad malicioso redirecione a
+      // aba inteira do YverFlix para outro site.
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms allow-presentation allow-popups-to-escape-sandbox');
 
       // Estilos inline: posicionamento relativo para fluxo normal
       iframe.style.width = '100%';
@@ -3557,7 +3561,11 @@
       iframe.setAttribute('referrerpolicy', 'origin');
       iframe.setAttribute('allow', 'fullscreen; accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
       iframe.setAttribute('allowfullscreen', 'true');
-      iframe.removeAttribute('sandbox'); // Garante que não possui sandbox
+      // Sandbox: os provedores (Pomfy/VidSrc) precisam rodar script e abrir
+      // popups (players de vídeo costumam depender disso), mas SEM
+      // allow-top-navigation — impede que um ad malicioso redirecione a
+      // aba inteira do YverFlix para outro site.
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms allow-presentation allow-popups-to-escape-sandbox');
 
       iframe.style.width = '100%';
       iframe.style.flex = '1';
